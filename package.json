@@ -1,0 +1,21 @@
+{
+  "name": "cosmic-chaos-card-arena",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cosmic Chaos: Card Arena - 3D Realtime Multiplayer Sci-Fi Card Game",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspace=packages/server",
+    "dev:shared": "npm run dev --workspace=packages/shared",
+    "dev:server": "npm run dev --workspace=packages/server",
+    "dev:client": "npm run dev --workspace=packages/client",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"npm run dev:server\" \"npm run dev:client\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}
