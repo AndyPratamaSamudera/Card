@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Volume2, VolumeX, Copy, Check, Radio, HelpCircle } from 'lucide-react';
+import { Volume2, VolumeX, Copy, Check, Radio, HelpCircle, Layers, Box } from 'lucide-react';
 import { useCosmicStore } from '../store/useCosmicStore';
 
 interface NavbarProps {
@@ -7,7 +7,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenHowToPlay }) => {
-  const { room, audioMuted, toggleAudio, connectionStatus } = useCosmicStore();
+  const { room, audioMuted, toggleAudio, connectionStatus, viewMode, toggleViewMode, currentView } = useCosmicStore();
   const [copied, setCopied] = useState(false);
 
   const handleCopyLink = () => {
@@ -52,7 +52,28 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenHowToPlay }) => {
       )}
 
       {/* Controls & Connection Status */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2 sm:space-x-3">
+        {/* 2D / 3D View Toggle (Only in Game) */}
+        {currentView === 'GAME' && (
+          <button
+            onClick={toggleViewMode}
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-cyan-500/40 text-cyan-300 hover:border-cyan-400 hover:bg-cyan-950/40 text-xs font-mono font-bold transition shadow-sm"
+            title={`Switch to ${viewMode === '2D' ? '3D' : '2D'} View`}
+          >
+            {viewMode === '2D' ? (
+              <>
+                <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                <span>2D POKER</span>
+              </>
+            ) : (
+              <>
+                <Box className="w-3.5 h-3.5 text-pink-400" />
+                <span>3D ARENA</span>
+              </>
+            )}
+          </button>
+        )}
+
         <button
           onClick={onOpenHowToPlay}
           className="p-2 rounded-full hover:bg-slate-800 text-slate-300 hover:text-cyan-400 transition"

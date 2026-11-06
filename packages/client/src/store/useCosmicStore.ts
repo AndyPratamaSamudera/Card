@@ -11,10 +11,12 @@ import {
 import { soundEngine } from '../audio/SynthAudioEngine';
 
 export type AppView = 'MAIN_MENU' | 'LOBBY' | 'GAME';
+export type ViewMode = '2D' | '3D';
 
 interface CosmicState {
   connectionStatus: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED';
   currentView: AppView;
+  viewMode: ViewMode;
   username: string;
   avatarId: AlienAvatarId;
   myPlayerId: string | null;
@@ -30,6 +32,8 @@ interface CosmicState {
   // Actions
   setConnectionStatus: (status: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED') => void;
   setCurrentView: (view: AppView) => void;
+  setViewMode: (mode: ViewMode) => void;
+  toggleViewMode: () => void;
   setUserProfile: (username: string, avatarId: AlienAvatarId) => void;
   setSession: (playerId: string, token: string) => void;
   setRoom: (room: RoomState | null) => void;
@@ -45,6 +49,7 @@ interface CosmicState {
 export const useCosmicStore = create<CosmicState>((set, get) => ({
   connectionStatus: 'CONNECTING',
   currentView: 'MAIN_MENU',
+  viewMode: (localStorage.getItem('cosmic_view_mode') as ViewMode) || '2D',
   username: localStorage.getItem('cosmic_username') || `Alien_${Math.floor(Math.random() * 900 + 100)}`,
   avatarId: (localStorage.getItem('cosmic_avatar') as AlienAvatarId) || 'alien_zorblax',
   myPlayerId: null,
@@ -59,6 +64,15 @@ export const useCosmicStore = create<CosmicState>((set, get) => ({
 
   setConnectionStatus: (status) => set({ connectionStatus: status }),
   setCurrentView: (view) => set({ currentView: view }),
+  setViewMode: (mode) => {
+    localStorage.setItem('cosmic_view_mode', mode);
+    set({ viewMode: mode });
+  },
+  toggleViewMode: () => {
+    const nextMode = get().viewMode === '2D' ? '3D' : '2D';
+    localStorage.setItem('cosmic_view_mode', nextMode);
+    set({ viewMode: nextMode });
+  },
   setUserProfile: (username, avatarId) => {
     localStorage.setItem('cosmic_username', username);
     localStorage.setItem('cosmic_avatar', avatarId);

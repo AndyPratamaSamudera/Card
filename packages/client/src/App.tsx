@@ -4,13 +4,14 @@ import { socketService } from './socket/socketService';
 import { Navbar } from './components/Navbar';
 import { MainMenu } from './components/MainMenu';
 import { LobbyView } from './components/LobbyView';
+import { PokerTableView2D } from './components/PokerTableView2D';
 import { GameScene } from './canvas/GameScene';
 import { GameHUD } from './components/GameHUD';
 import { MatchResultModal } from './components/MatchResultModal';
 import { HowToPlayModal } from './components/HowToPlayModal';
 
 export const App: React.FC = () => {
-  const { currentView, gameState, myHand, myPlayerId } = useCosmicStore();
+  const { currentView, viewMode, gameState, myHand, myPlayerId } = useCosmicStore();
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   useEffect(() => {
@@ -28,17 +29,24 @@ export const App: React.FC = () => {
       {currentView === 'LOBBY' && <LobbyView />}
 
       {currentView === 'GAME' && gameState && (
-        <>
-          {/* 3D WebGL Tabletop Arena */}
-          <GameScene gameState={gameState} myPlayerId={myPlayerId} />
-
-          {/* Interactive 2D Game HUD Overlay */}
-          <GameHUD
+        viewMode === '2D' ? (
+          /* Clean, High-Readability 2D Poker Table Arena (Default) */
+          <PokerTableView2D
             gameState={gameState}
             myHand={myHand}
             myPlayerId={myPlayerId}
           />
-        </>
+        ) : (
+          /* 3D WebGL Tabletop Arena with Orbit Controls */
+          <>
+            <GameScene gameState={gameState} myPlayerId={myPlayerId} />
+            <GameHUD
+              gameState={gameState}
+              myHand={myHand}
+              myPlayerId={myPlayerId}
+            />
+          </>
+        )
       )}
 
       {/* Match Result Overlay */}
