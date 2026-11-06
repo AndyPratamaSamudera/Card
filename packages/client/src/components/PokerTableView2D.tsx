@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GameState, Card, Player, AlienAvatarId } from '@cosmic/shared';
+import { GameState, Card, Player } from '@cosmic/shared';
 import { useCosmicStore } from '../store/useCosmicStore';
 import { socketService } from '../socket/socketService';
 import { soundEngine } from '../audio/SynthAudioEngine';
@@ -22,6 +22,17 @@ interface PokerTableView2DProps {
   myPlayerId: string | null;
 }
 
+// Seat positions around the oval table (percentage based matching reference image)
+const OPPONENT_SEAT_POSITIONS = [
+  { top: '4%', left: '50%', transform: 'translate(-50%, -50%)' },      // Top Center
+  { top: '10%', left: '22%', transform: 'translate(-50%, -50%)' },     // Top Left
+  { top: '10%', left: '78%', transform: 'translate(-50%, -50%)' },     // Top Right
+  { top: '48%', left: '4%', transform: 'translate(-50%, -50%)' },      // Middle Left
+  { top: '48%', left: '96%', transform: 'translate(-50%, -50%)' },     // Middle Right
+  { top: '86%', left: '16%', transform: 'translate(-50%, -50%)' },     // Bottom Left
+  { top: '86%', left: '84%', transform: 'translate(-50%, -50%)' },     // Bottom Right
+];
+
 export const PokerTableView2D: React.FC<PokerTableView2DProps> = ({
   gameState,
   myHand,
@@ -40,7 +51,6 @@ export const PokerTableView2D: React.FC<PokerTableView2DProps> = ({
   // Other players seated around the table
   const opponents = gameState.players.filter(p => p.id !== myPlayerId);
 
-  const ratio = Math.min(1.2, gameState.coreTotal / (gameState.overloadLimit || 1));
   const remainingHeadroom = Math.max(0, gameState.overloadLimit - gameState.coreTotal);
 
   const handleCardClick = (card: Card) => {
@@ -70,88 +80,98 @@ export const PokerTableView2D: React.FC<PokerTableView2DProps> = ({
       selectCard(null);
       setTargetPickerCard(null);
     } else {
-      setActionError(res.error || 'Failed to play card');
+      setActionError(res.error || 'Gagal memainkan kartu');
     }
   };
 
-  // Helper for rendering stylized alien portrait
-  const renderAlienAvatar = (avatarId: AlienAvatarId, overloadLevel: number, isEliminated: boolean) => {
-    const isSwollen = overloadLevel === 1;
-    const isJittering = overloadLevel === 2;
+  // Suit generator helper for classic card representation
+  const getCardSuit = (card: Card) => {
+    if (card.type === 'NUMBER') {
+      const suits = ['♠', '♥', '♦', '♣'];
+      const suit = suits[card.value % 4];
+      const isRed = suit === '♥' || suit === '♦';
+      return { suit, isRed };
+    }
+    return { suit: '★', isRed: true };
+  };
 
-    const baseColor =
-      avatarId === 'alien_zorblax' ? '#22c55e' :
-      avatarId === 'alien_vex' ? '#a855f7' :
-      avatarId === 'alien_blobbo' ? '#f97316' : '#38bdf8';
+  // Render a classic poker playing card
+  const renderClassicCard = (card: Card, isHandCard = false, isSelected = false) => {
+    const { suit, isRed } = getCardSuit(card);
+    const textColor = isRed ? 'text-red-600' : 'text-slate-900';
 
     return (
-      <div className={`relative flex items-center justify-center transition-transform ${isJittering ? 'animate-wiggle' : ''}`}>
-        <div
-          className={`w-14 h-14 rounded-full flex items-center justify-center border-2 shadow-lg transition-transform ${
-            isEliminated
-              ? 'opacity-30 grayscale border-slate-700 bg-slate-900'
-              : isSwollen
-              ? 'scale-125 border-amber-400 bg-amber-950/40'
-              : isJittering
-              ? 'scale-110 border-red-500 bg-red-950/60 shadow-red-500/50'
-              : 'border-cyan-400/80 bg-slate-900'
-          }`}
-          style={{
-            borderColor: isEliminated ? '#475569' : isJittering ? '#ef4444' : isSwollen ? '#f59e0b' : baseColor
-          }}
-        >
-          {/* Stylized Alien Face */}
-          {avatarId === 'alien_zorblax' ? (
-            <div className="flex flex-col items-center">
-              <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center border border-slate-900">
-                <div className={`w-2.5 h-2.5 rounded-full ${overloadLevel > 0 ? 'bg-red-500' : 'bg-green-600'}`} />
-              </div>
-              <div className="w-4 h-1 bg-green-400 rounded-full mt-1" />
-            </div>
-          ) : avatarId === 'alien_vex' ? (
-            <div className="flex flex-col items-center">
-              <div className="flex space-x-1 mb-0.5">
-                <div className="w-1 h-2 bg-purple-400 rounded-full transform -rotate-12" />
-                <div className="w-1 h-2 bg-purple-400 rounded-full transform rotate-12" />
-              </div>
-              <div className="flex space-x-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-pink-400" />
-                <div className="w-2.5 h-2.5 rounded-full bg-pink-400" />
-              </div>
-            </div>
-          ) : avatarId === 'alien_blobbo' ? (
-            <div className="flex flex-col items-center">
-              <div className="flex space-x-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-white flex items-center justify-center">
-                  <div className="w-1 h-1 bg-black rounded-full" />
-                </div>
-                <div className="w-2 h-2 rounded-full bg-white flex items-center justify-center">
-                  <div className="w-1 h-1 bg-black rounded-full" />
-                </div>
-              </div>
-              <div className={`w-3 h-1.5 rounded-full ${overloadLevel > 0 ? 'bg-red-500' : 'bg-orange-400'}`} />
-            </div>
+      <div
+        className={`relative bg-white rounded-md border border-slate-400 shadow-md flex flex-col justify-between select-none transition-all ${
+          isHandCard
+            ? `w-20 sm:w-24 h-28 sm:h-36 p-1.5 sm:p-2 cursor-pointer ${
+                isSelected ? '-translate-y-6 ring-2 ring-amber-400 shadow-xl' : 'hover:-translate-y-3'
+              }`
+            : 'w-12 sm:w-14 h-16 sm:h-20 p-1'
+        }`}
+      >
+        {/* Top-Left Index */}
+        <div className={`flex flex-col items-start leading-none ${textColor}`}>
+          <span className={`${isHandCard ? 'text-base sm:text-lg font-black' : 'text-xs sm:text-sm font-bold'}`}>
+            {card.type === 'NUMBER' ? card.value : '★'}
+          </span>
+          <span className={`${isHandCard ? 'text-xs sm:text-sm' : 'text-[10px]'}`}>{suit}</span>
+        </div>
+
+        {/* Center Artwork / Suit */}
+        <div className={`text-center my-auto leading-none ${textColor}`}>
+          {card.type === 'NUMBER' ? (
+            <span className={`${isHandCard ? 'text-2xl sm:text-3xl' : 'text-base sm:text-lg'}`}>
+              {suit}
+            </span>
           ) : (
             <div className="flex flex-col items-center">
-              <div className="w-6 h-6 rounded-full bg-cyan-400/20 border border-cyan-300 flex items-center justify-center">
-                <span className="text-cyan-200 text-xs">✦</span>
-              </div>
+              <span className={`${isHandCard ? 'text-base sm:text-xl' : 'text-xs'} text-amber-600`}>★</span>
+              <span className="text-[9px] sm:text-[10px] font-bold text-slate-800 uppercase tracking-tighter line-clamp-1">
+                {card.name}
+              </span>
             </div>
           )}
         </div>
 
-        {/* Ejected X mark */}
-        {isEliminated && (
-          <div className="absolute inset-0 flex items-center justify-center text-red-500 font-black text-2xl font-mono">
-            ✕
+        {/* Bottom-Right Inverted Index */}
+        <div className={`flex flex-col items-end leading-none rotate-180 ${textColor}`}>
+          <span className={`${isHandCard ? 'text-base sm:text-lg font-black' : 'text-xs sm:text-sm font-bold'}`}>
+            {card.type === 'NUMBER' ? card.value : '★'}
+          </span>
+          <span className={`${isHandCard ? 'text-xs sm:text-sm' : 'text-[10px]'}`}>{suit}</span>
+        </div>
+
+        {/* Description overlay for hand cards */}
+        {isHandCard && card.type === 'SPECIAL' && (
+          <div className="absolute inset-x-1 bottom-1 text-[8px] sm:text-[9px] text-slate-600 bg-amber-50/90 rounded px-1 py-0.5 border border-amber-200 line-clamp-2 leading-tight">
+            {card.description}
           </div>
         )}
       </div>
     );
   };
 
+  // Render classic face-down card back
+  const renderCardBack = (count = 2) => {
+    return (
+      <div className="flex -space-x-4 drop-shadow-sm">
+        {Array.from({ length: Math.min(count, 4) }).map((_, i) => (
+          <div
+            key={i}
+            className="w-7 sm:w-8 h-10 sm:h-12 rounded bg-gradient-to-br from-red-700 via-red-800 to-red-950 border border-white/80 shadow-sm flex items-center justify-center"
+          >
+            <div className="w-5 sm:w-6 h-8 sm:h-10 border border-red-400/40 rounded-sm flex items-center justify-center">
+              <span className="text-[8px] text-red-200">♦</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
-    <div className="relative w-full h-full flex flex-col justify-between pt-16 pb-4 px-4 bg-gradient-to-b from-[#060814] via-[#091124] to-[#04060d] select-none overflow-hidden font-sans">
+    <div className="relative w-full h-full flex flex-col justify-between pt-16 pb-3 px-2 sm:px-6 card-suits-pattern overflow-hidden font-sans select-none text-slate-100">
       {/* Target Picker Modal */}
       {targetPickerCard && (
         <TargetPickerModal
@@ -163,25 +183,25 @@ export const PokerTableView2D: React.FC<PokerTableView2DProps> = ({
         />
       )}
 
-      {/* Floating Match Log Drawer Toggle (Top Right) */}
+      {/* Floating Match History Toggle (Top Right) */}
       <div className="absolute top-16 right-4 z-30">
         <button
           onClick={() => setShowEvents(!showEvents)}
-          className="bg-slate-900/90 border border-cyan-500/30 hover:border-cyan-400 text-xs font-mono text-cyan-300 px-3 py-1.5 rounded-xl flex items-center space-x-1.5 shadow-lg backdrop-blur-md transition"
+          className="bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300 px-3 py-1.5 rounded-lg flex items-center space-x-1.5 shadow-md transition"
         >
-          <Layers className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Match Log ({gameState.lastEvents.length})</span>
+          <Layers className="w-3.5 h-3.5 text-amber-400" />
+          <span>Riwayat ({gameState.lastEvents.length})</span>
           {showEvents ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
 
         {showEvents && (
-          <div className="mt-2 w-80 max-h-64 overflow-y-auto bg-slate-950/95 border border-cyan-800/60 rounded-2xl p-3 shadow-2xl text-[11px] font-mono space-y-2 backdrop-blur-md">
+          <div className="mt-1.5 w-80 max-h-60 overflow-y-auto bg-slate-900/95 border border-slate-700 rounded-xl p-3 shadow-2xl text-[11px] font-mono space-y-2 backdrop-blur-sm">
             {gameState.lastEvents.length === 0 ? (
-              <div className="text-slate-600">No events recorded</div>
+              <div className="text-slate-500">Belum ada aksi permainan</div>
             ) : (
               gameState.lastEvents.map((evt) => (
-                <div key={evt.id} className="border-b border-slate-900 pb-1 text-slate-300">
-                  <span className="text-cyan-400 font-bold">› </span>
+                <div key={evt.id} className="border-b border-slate-800 pb-1 text-slate-300">
+                  <span className="text-amber-400 font-bold">› </span>
                   {evt.message}
                 </div>
               ))
@@ -190,272 +210,196 @@ export const PokerTableView2D: React.FC<PokerTableView2DProps> = ({
         )}
       </div>
 
-      {/* TOP AREA: Opponents Seated Around the Table */}
-      <div className="w-full max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-3 sm:gap-6 pt-1 z-10">
-        {opponents.map((p) => {
-          const isPlayerActive = gameState.turn.activePlayerId === p.id;
-          return (
-            <div
-              key={p.id}
-              className={`relative flex items-center space-x-3 px-3 py-2 rounded-2xl border transition-all ${
-                isPlayerActive
-                  ? 'bg-cyan-950/70 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.4)] ring-2 ring-cyan-400/50 scale-105'
-                  : 'bg-slate-900/70 border-slate-800/80 hover:border-slate-700'
-              } ${p.isEliminated ? 'opacity-40 grayscale' : ''}`}
-            >
-              {/* Turn Spotlight Beacon */}
-              {isPlayerActive && (
-                <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-cyan-500 text-slate-950 text-[9px] font-mono font-black rounded-full uppercase tracking-wider animate-pulse">
-                  PLAYING NOW
-                </span>
-              )}
+      {/* ============================================================== */}
+      {/* CLASSIC POKER TABLE CONTAINER (Matches User's Reference Image) */}
+      {/* ============================================================== */}
+      <div className="relative my-auto w-full max-w-5xl mx-auto flex items-center justify-center px-2 py-4">
+        {/* Outer Oval Table with Padded Leather Bumper & Wood Inlay */}
+        <div className="relative w-full aspect-[16/9] max-h-[380px] sm:max-h-[440px] rounded-[180px] sm:rounded-[220px] poker-bumper p-3.5 sm:p-5 flex items-center justify-center">
+          {/* Inner Wooden / Cream Bevel Trim */}
+          <div className="relative w-full h-full rounded-[160px] sm:rounded-[200px] poker-wood-rim p-1 sm:p-1.5 flex items-center justify-center">
+            {/* The Classic Emerald Green Felt Table Surface */}
+            <div className="relative w-full h-full rounded-[150px] sm:rounded-[190px] poker-felt flex items-center justify-center shadow-inner overflow-visible">
+              {/* Thin White Table Inlay Oval Line */}
+              <div className="absolute inset-4 sm:inset-6 rounded-[140px] sm:rounded-[180px] border border-white/20 pointer-events-none" />
 
-              {/* Avatar */}
-              {renderAlienAvatar(p.avatarId, p.overloadLevel, p.isEliminated)}
-
-              {/* Info Column */}
-              <div>
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-xs font-bold text-white truncate max-w-[90px] sm:max-w-[120px]">
-                    {p.username}
-                  </span>
-                  {p.isAI && (
-                    <span className="text-[9px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/40 px-1 py-0.2 rounded">
-                      BOT
-                    </span>
-                  )}
-                  {p.hasShield && (
-                    <span title="Plasma Shield Active">
-                      <Shield className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400/30" />
-                    </span>
-                  )}
-                  {p.timeBombTurnsRemaining !== null && (
-                    <span title={`Time Bomb: ${p.timeBombTurnsRemaining} turns left`} className="flex items-center text-red-400 text-[10px] font-mono animate-bounce">
-                      <Bomb className="w-3 h-3 mr-0.5" />
-                      {p.timeBombTurnsRemaining}
-                    </span>
-                  )}
-                </div>
-
-                {/* Overload Level Striker Battery */}
-                <div className="flex items-center space-x-1 mt-1">
-                  <span className="text-[10px] text-slate-400 font-mono">OVERLOAD:</span>
-                  <div className="flex space-x-1">
-                    {[1, 2, 3].map((lvl) => (
-                      <div
-                        key={lvl}
-                        className={`w-3 h-3 rounded-full border transition-all ${
-                          p.overloadLevel >= lvl
-                            ? 'bg-red-500 border-red-400 shadow-[0_0_6px_#ef4444]'
-                            : 'bg-slate-950 border-slate-700'
-                        }`}
-                        title={`Overload Level ${lvl}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {/* Hand cards representation */}
-                <div className="flex items-center space-x-1 mt-1">
-                  <span className="text-[10px] text-slate-400 font-mono">CARDS:</span>
-                  <div className="flex -space-x-1.5">
-                    {Array.from({ length: Math.min(6, p.cardsInHandCount) }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="w-3.5 h-5 rounded-sm bg-gradient-to-tr from-cyan-900 to-slate-800 border border-cyan-500/40 shadow-sm"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-[10px] text-cyan-300 font-mono ml-1 font-bold">
-                    {p.cardsInHandCount}
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* CENTER AREA: THE POKER TABLE FELT & CORE REACTOR */}
-      <div className="relative my-auto w-full max-w-4xl mx-auto flex items-center justify-center">
-        {/* Oval Poker Table Felt Surface */}
-        <div className="relative w-full aspect-[21/9] max-h-[290px] rounded-[140px] bg-gradient-to-b from-[#0a1b2a] via-[#091522] to-[#060c14] border-4 border-[#1e3a5f] shadow-[0_0_60px_rgba(6,182,212,0.15)] flex items-center justify-center p-4">
-          {/* Inner Neon Felt Rail */}
-          <div className="absolute inset-2 sm:inset-3 rounded-[130px] border border-cyan-500/30 pointer-events-none" />
-
-          {/* Table Direction Flow Indicator (Left and Right Rails) */}
-          <div className="absolute left-6 top-1/2 -translate-y-1/2 flex flex-col items-center text-cyan-500/60 font-mono text-[10px]">
-            <RotateCcw className={`w-5 h-5 ${gameState.turn.direction === 'CLOCKWISE' ? '' : 'scale-x-[-1]'}`} />
-            <span className="mt-0.5">{gameState.turn.direction === 'CLOCKWISE' ? 'CW' : 'CCW'}</span>
-          </div>
-
-          <div className="absolute right-6 top-1/2 -translate-y-1/2 flex flex-col items-center text-cyan-500/60 font-mono text-[10px]">
-            <RotateCcw className={`w-5 h-5 ${gameState.turn.direction === 'CLOCKWISE' ? '' : 'scale-x-[-1]'}`} />
-            <span className="mt-0.5">{gameState.turn.direction === 'CLOCKWISE' ? 'CW' : 'CCW'}</span>
-          </div>
-
-          {/* Table Center: The Core Pot & Last Played Card */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-6 z-10">
-            {/* The Central Energy Core Gauge */}
-            <div className="flex flex-col items-center text-center">
-              <div className="text-[10px] sm:text-xs font-mono font-bold tracking-widest text-cyan-400 uppercase mb-1">
-                CENTRAL CORE TOTAL
+              {/* Table Direction Flow Indicator (Left and Right) */}
+              <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center space-x-1 text-white/40 font-mono text-[10px]">
+                <RotateCcw className={`w-4 h-4 ${gameState.turn.direction === 'CLOCKWISE' ? '' : 'scale-x-[-1]'}`} />
+                <span>{gameState.turn.direction === 'CLOCKWISE' ? 'CW' : 'CCW'}</span>
               </div>
 
-              {/* Big Bold Gauge Circle */}
-              <div
-                className={`relative w-28 h-28 sm:w-32 sm:h-32 rounded-full flex flex-col items-center justify-center border-4 bg-slate-950/90 shadow-2xl transition-all duration-500 ${
-                  ratio >= 0.85
-                    ? 'border-red-500 shadow-[0_0_35px_#ef4444] animate-pulse'
-                    : ratio >= 0.6
-                    ? 'border-amber-400 shadow-[0_0_25px_#f59e0b]'
-                    : 'border-cyan-400 shadow-[0_0_25px_#06b6d4]'
-                }`}
-              >
-                {/* Core Total Number */}
-                <div
-                  className={`text-4xl sm:text-5xl font-black font-mono tracking-tight ${
-                    ratio >= 0.85 ? 'text-red-400' : ratio >= 0.6 ? 'text-amber-400' : 'text-cyan-300'
-                  }`}
-                >
-                  {gameState.coreTotal}
-                </div>
+              {/* ============================================================== */}
+              {/* OPPONENT SEATS PLACED EXACTLY ALONG THE POKER TABLE RIM       */}
+              {/* ============================================================== */}
+              {opponents.map((p, idx) => {
+                const pos = OPPONENT_SEAT_POSITIONS[idx % OPPONENT_SEAT_POSITIONS.length];
+                const isPlayerActive = gameState.turn.activePlayerId === p.id;
 
-                {/* Overload Limit Text */}
-                <div className="text-[11px] font-mono text-slate-400 font-bold mt-0.5">
-                  / {gameState.overloadLimit} LIMIT
-                </div>
+                return (
+                  <div
+                    key={p.id}
+                    className="absolute z-20 flex flex-col items-center"
+                    style={{
+                      top: pos.top,
+                      left: pos.left,
+                      transform: pos.transform
+                    }}
+                  >
+                    {/* Face-down cards standing behind the player badge */}
+                    <div className="mb-1">
+                      {renderCardBack(p.cardsInHandCount || 2)}
+                    </div>
 
-                {/* Remaining safe room */}
-                <div
-                  className={`text-[9px] font-mono font-bold uppercase mt-1 px-2 py-0.5 rounded-full ${
-                    remainingHeadroom <= 5
-                      ? 'bg-red-500/20 text-red-300'
-                      : remainingHeadroom <= 10
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : 'bg-cyan-500/20 text-cyan-300'
-                  }`}
-                >
-                  {remainingHeadroom === 0 ? 'CRITICAL LIMIT' : `${remainingHeadroom} PTS TO DETONATION`}
-                </div>
-              </div>
+                    {/* Classic Navy/Charcoal Seat Badge (Just like deepseek, claude in image) */}
+                    <div
+                      className={`relative min-w-[85px] sm:min-w-[110px] px-2.5 py-1 rounded-md text-center transition shadow-md ${
+                        isPlayerActive
+                          ? 'bg-[#1a2b3c] border-2 border-amber-400 ring-2 ring-amber-400/30'
+                          : 'bg-[#15202b] border border-slate-700/80 hover:border-slate-600'
+                      } ${p.isEliminated ? 'opacity-40 grayscale' : ''}`}
+                    >
+                      {/* Player Username */}
+                      <div className="text-[11px] sm:text-xs font-bold text-white truncate max-w-[100px] leading-tight">
+                        {p.username}
+                      </div>
 
-              {/* Multiplier Boost Badge */}
-              {gameState.turn.multiplier > 1 && (
-                <div className="mt-2 inline-flex items-center space-x-1 px-2.5 py-0.5 bg-amber-500/20 border border-amber-500 text-amber-300 rounded-full text-[10px] font-mono font-black animate-pulse">
-                  <Zap className="w-3 h-3" />
-                  <span>{gameState.turn.multiplier}X NEXT NUMBER</span>
-                </div>
-              )}
-            </div>
+                      {/* Overload Level / Chips indicator */}
+                      <div className="flex items-center justify-center space-x-1 text-[10px] sm:text-[11px] font-mono text-emerald-400 font-semibold leading-tight mt-0.5">
+                        {p.isEliminated ? (
+                          <span className="text-red-400 font-bold">K.O.</span>
+                        ) : (
+                          <>
+                            <span className="text-slate-400 text-[9px]">⚡</span>
+                            <span>{p.overloadLevel}/3 Penalti</span>
+                          </>
+                        )}
+                      </div>
 
-            {/* Last Played Card in Pot (Center Discard) */}
-            <div className="flex flex-col items-center text-center">
-              <div className="text-[10px] sm:text-xs font-mono font-bold tracking-widest text-slate-400 uppercase mb-1">
-                LAST CARD IN PLAY
-              </div>
+                      {/* Active Player Turn Flag */}
+                      {isPlayerActive && (
+                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-1.5 py-0.2 bg-amber-400 text-slate-950 text-[8px] font-mono font-black rounded uppercase">
+                          GILIRAN
+                        </div>
+                      )}
 
-              {gameState.activeCardInPlay ? (
-                <div
-                  className="w-20 h-28 sm:w-24 sm:h-32 rounded-xl p-2 bg-slate-950 border-2 flex flex-col justify-between shadow-xl animate-fadeIn"
-                  style={{
-                    borderColor: gameState.activeCardInPlay.glowColor,
-                    boxShadow: `0 0 20px ${gameState.activeCardInPlay.glowColor}55`
-                  }}
-                >
-                  <div className="flex justify-between items-center text-[9px] font-mono font-bold" style={{ color: gameState.activeCardInPlay.glowColor }}>
-                    <span>{gameState.activeCardInPlay.type}</span>
-                    {gameState.activeCardInPlay.type === 'NUMBER' && (
-                      <span className="text-sm font-black font-mono">+{gameState.activeCardInPlay.value}</span>
-                    )}
-                  </div>
+                      {/* Shield Indicator */}
+                      {p.hasShield && (
+                        <div className="absolute -top-2 -right-2 bg-blue-600 rounded-full p-0.5 shadow border border-white">
+                          <Shield className="w-3 h-3 text-white" />
+                        </div>
+                      )}
 
-                  <div className="text-center my-auto">
-                    <div className="text-xs font-black text-white leading-tight">
-                      {gameState.activeCardInPlay.name}
+                      {/* Time Bomb */}
+                      {p.timeBombTurnsRemaining !== null && (
+                        <div className="absolute -top-2 -left-2 bg-red-600 rounded-full p-0.5 shadow border border-white flex items-center text-[9px] font-mono font-black text-white px-1">
+                          <Bomb className="w-2.5 h-2.5 mr-0.5" />
+                          {p.timeBombTurnsRemaining}
+                        </div>
+                      )}
                     </div>
                   </div>
+                );
+              })}
 
-                  <div className="text-[8px] text-slate-400 truncate">
-                    {gameState.activeCardInPlay.description}
+              {/* ============================================================== */}
+              {/* CENTER BOARD: COMMUNITY CARDS & POT VALUE (Like Texas Hold'em) */}
+              {/* ============================================================== */}
+              <div className="flex flex-col items-center justify-center z-10">
+                {/* Community Cards Laid Out Flat in the Center of the Table */}
+                <div className="flex items-center space-x-1.5 sm:space-x-2 mb-2">
+                  {gameState.activeCardInPlay ? (
+                    renderClassicCard(gameState.activeCardInPlay)
+                  ) : (
+                    <div className="w-12 sm:w-14 h-16 sm:h-20 rounded-md border-2 border-dashed border-white/20 flex items-center justify-center text-white/30 text-xs font-mono">
+                      <span>POT</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Pot / Core Total Display (Matches the "$6,600" text in reference image) */}
+                <div className="text-center">
+                  <div className="text-xl sm:text-3xl font-black text-white font-mono tracking-tight drop-shadow">
+                    CORE: {gameState.coreTotal} <span className="text-white/60 text-sm sm:text-base font-normal">/ {gameState.overloadLimit}</span>
                   </div>
+
+                  {/* Sisa points to Overload limit */}
+                  <div className="text-[10px] sm:text-xs font-mono text-emerald-300 font-semibold">
+                    {remainingHeadroom === 0
+                      ? '⚠️ OVERLOAD LIMIT TERCAPAI!'
+                      : `${remainingHeadroom} angka lagi ke Overload`}
+                  </div>
+
+                  {/* Multiplier 2X Chip */}
+                  {gameState.turn.multiplier > 1 && (
+                    <div className="mt-1 inline-flex items-center space-x-1 px-2 py-0.5 bg-amber-500 text-slate-950 rounded-full text-[10px] font-bold shadow-sm">
+                      <Zap className="w-3 h-3" />
+                      <span>2X OVERCLOCK AKTIF</span>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="w-20 h-28 sm:w-24 sm:h-32 rounded-xl border-2 border-dashed border-slate-700/60 bg-slate-950/40 flex flex-col items-center justify-center text-slate-600 text-[10px] font-mono">
-                  <span>EMPTY POT</span>
+
+                {/* Classic Dealer Button sitting on felt */}
+                <div className="absolute right-1/4 bottom-1/4 w-6 h-6 rounded-full bg-white border border-slate-400 text-slate-900 font-black text-[11px] font-mono flex items-center justify-center shadow">
+                  D
                 </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* BOTTOM AREA: PLAYER'S OWN SEAT & POKER HAND */}
+      {/* ============================================================== */}
+      {/* BOTTOM AREA: PLAYER'S SEAT & CLASSIC POKER HAND               */}
+      {/* ============================================================== */}
       <div className="w-full max-w-4xl mx-auto flex flex-col items-center z-20">
-        {/* Player Status Ribbon & Turn Banner */}
+        {/* Turn Status Banner & Player Identity */}
         <div className="w-full flex items-center justify-between mb-2 px-2">
-          {/* Player Identity & Overload Meter */}
+          {/* My Player Badge (Matching reference image style) */}
           {myPlayer && (
-            <div className="flex items-center space-x-3 bg-slate-950/80 border border-slate-800 px-3.5 py-1.5 rounded-2xl">
-              {renderAlienAvatar(myPlayer.avatarId, myPlayer.overloadLevel, myPlayer.isEliminated)}
+            <div className="flex items-center space-x-2 bg-[#15202b] border border-slate-700/80 px-3 py-1.5 rounded-lg shadow-sm">
               <div>
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-xs font-black text-white">{myPlayer.username} (You)</span>
-                  {myPlayer.hasShield && (
-                    <span title="Plasma Shield Active">
-                      <Shield className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400/30" />
-                    </span>
-                  )}
-                  {myPlayer.timeBombTurnsRemaining !== null && (
-                    <span title={`Time Bomb: ${myPlayer.timeBombTurnsRemaining} turns left`} className="flex items-center text-red-400 text-[10px] font-mono animate-bounce">
-                      <Bomb className="w-3 h-3 mr-0.5" />
-                      {myPlayer.timeBombTurnsRemaining}
-                    </span>
-                  )}
+                <div className="text-xs font-bold text-white flex items-center space-x-1">
+                  <span>{myPlayer.username}</span>
+                  <span className="text-emerald-400 text-[10px] font-mono">(Kamu)</span>
                 </div>
-                <div className="flex items-center space-x-1 mt-0.5">
-                  <span className="text-[10px] text-slate-400 font-mono">OVERLOAD STRIKES:</span>
-                  <div className="flex space-x-1">
-                    {[1, 2, 3].map((lvl) => (
-                      <div
-                        key={lvl}
-                        className={`w-3 h-3 rounded-full border ${
-                          myPlayer.overloadLevel >= lvl
-                            ? 'bg-red-500 border-red-400 shadow-[0_0_6px_#ef4444]'
-                            : 'bg-slate-900 border-slate-700'
-                        }`}
-                      />
-                    ))}
-                  </div>
+                <div className="text-[10px] font-mono text-emerald-400">
+                  ⚡ {myPlayer.overloadLevel}/3 Penalti
                 </div>
               </div>
+
+              {myPlayer.hasShield && (
+                <Shield className="w-4 h-4 text-blue-400" />
+              )}
             </div>
           )}
 
-          {/* Turn Alert & Timer */}
+          {/* Action Callout */}
           <div
-            className={`px-4 py-2 rounded-2xl border text-xs font-mono font-bold flex items-center space-x-2 transition ${
+            className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold flex items-center space-x-1.5 ${
               isMyTurn
-                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.4)] animate-bounce'
-                : 'bg-slate-900/80 border-slate-800 text-slate-400'
+                ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                : 'bg-slate-900 border-slate-800 text-slate-400'
             }`}
           >
-            <Clock className="w-4 h-4 text-cyan-400" />
+            <Clock className="w-3.5 h-3.5" />
             <span>
-              {isMyTurn ? '👉 YOUR TURN — PLAY A CARD!' : `Waiting for ${activePlayer?.username || 'Opponent'}...`}
+              {isMyTurn
+                ? '👉 GILIRANMU — PILIH KARTU'
+                : `Menunggu ${activePlayer?.username || 'lawan'}...`}
             </span>
           </div>
         </div>
 
-        {/* Action Error Message */}
+        {/* Error notification if action rejected */}
         {actionError && (
-          <div className="mb-2 px-3 py-1 bg-red-950/90 border border-red-500/60 rounded-xl text-red-200 text-xs font-mono">
+          <div className="mb-2 px-3 py-1 bg-red-950/90 border border-red-500 text-red-200 text-xs font-mono rounded-md">
             ⚠️ {actionError}
           </div>
         )}
 
         {/* Player's Poker Hand of Cards */}
-        <div className="relative flex items-end justify-center w-full px-2 pb-1 overflow-x-auto min-h-[175px]">
+        <div className="relative flex items-end justify-center w-full px-2 pb-1 overflow-x-auto min-h-[145px] sm:min-h-[170px]">
           {myHand.map((card) => {
             const isSelected = selectedCard?.id === card.id;
             const willOverload =
@@ -466,81 +410,32 @@ export const PokerTableView2D: React.FC<PokerTableView2DProps> = ({
               <div
                 key={card.id}
                 onClick={() => handleCardClick(card)}
-                className={`relative cursor-pointer transition-all duration-300 transform -ml-3 sm:-ml-2 first:ml-0 ${
-                  isSelected
-                    ? '-translate-y-8 scale-110 z-30'
-                    : 'hover:-translate-y-4 hover:scale-105 hover:z-20'
-                } ${!isMyTurn ? 'opacity-75 grayscale-[25%]' : ''}`}
+                className={`relative transform -ml-2 sm:-ml-3 first:ml-0 transition-all ${
+                  isSelected ? 'z-30' : 'z-10'
+                } ${!isMyTurn ? 'opacity-80' : ''}`}
               >
-                {/* Card Container */}
-                <div
-                  className="w-28 sm:w-32 h-40 sm:h-44 rounded-2xl p-2.5 flex flex-col justify-between border-2 bg-slate-950 shadow-2xl transition"
-                  style={{
-                    borderColor: isSelected ? '#ffffff' : card.glowColor,
-                    boxShadow: isSelected
-                      ? `0 0 30px ${card.glowColor}`
-                      : `0 4px 15px rgba(0,0,0,0.6)`
-                  }}
-                >
-                  {/* Card Top: Type & Value */}
-                  <div className="flex items-center justify-between">
-                    <span
-                      className="text-[9px] font-mono font-bold tracking-wider uppercase px-1.5 py-0.5 rounded"
-                      style={{ backgroundColor: `${card.glowColor}25`, color: card.glowColor }}
-                    >
-                      {card.type}
-                    </span>
-                    {card.type === 'NUMBER' && (
-                      <span className="text-xl font-black font-mono text-white">
-                        +{card.value}
-                      </span>
-                    )}
+                {/* Classic Playing Card */}
+                {renderClassicCard(card, true, isSelected)}
+
+                {/* Overload Alert Tag on Card */}
+                {willOverload && isMyTurn && (
+                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[8px] font-mono font-black px-1 py-0.5 rounded shadow whitespace-nowrap">
+                    OVERLOAD!
                   </div>
+                )}
 
-                  {/* Card Center: Art/Icon & Title */}
-                  <div className="text-center my-1">
-                    <div
-                      className="w-10 h-10 mx-auto rounded-xl flex items-center justify-center font-bold text-sm mb-1"
-                      style={{
-                        backgroundColor: `${card.glowColor}20`,
-                        border: `1px solid ${card.glowColor}60`,
-                        color: card.glowColor
-                      }}
-                    >
-                      {card.type === 'NUMBER' ? `+${card.value}` : '★'}
-                    </div>
-                    <div className="text-xs font-bold text-white tracking-tight leading-tight">
-                      {card.name}
-                    </div>
-                  </div>
-
-                  {/* Card Bottom: Description & Safe/Overload indicator */}
-                  <div>
-                    <div className="text-[9px] text-slate-300 leading-tight line-clamp-2">
-                      {card.description}
-                    </div>
-
-                    {willOverload && isMyTurn && (
-                      <div className="mt-1 flex items-center space-x-1 text-[8px] font-mono font-bold text-red-400 bg-red-950/60 px-1 py-0.5 rounded">
-                        <AlertTriangle className="w-2.5 h-2.5" />
-                        <span>CAUTION: WILL OVERLOAD!</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Instant Play Button when selected */}
+                {/* Play Card Action Button */}
                 {isSelected && isMyTurn && (
-                  <div className="absolute -top-9 left-1/2 -translate-x-1/2 z-40">
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-40">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handlePlaySelectedCard(card);
                       }}
                       disabled={isSubmitting}
-                      className="px-4 py-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-mono font-black text-xs shadow-lg shadow-cyan-500/50 whitespace-nowrap"
+                      className="px-3 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md whitespace-nowrap transition"
                     >
-                      PLAY CARD
+                      MAINKAN
                     </button>
                   </div>
                 )}
@@ -549,11 +444,9 @@ export const PokerTableView2D: React.FC<PokerTableView2DProps> = ({
           })}
         </div>
 
-        {/* Hand Cards Hint */}
-        <div className="text-center mt-0.5">
-          <span className="text-[11px] font-mono text-slate-400">
-            {isMyTurn ? 'CLICK ANY CARD TO PLAY' : 'OPPONENT IS CONSIDERING THEIR MOVE...'}
-          </span>
+        {/* Helper Hint Text */}
+        <div className="text-[11px] font-mono text-slate-400 text-center mt-0.5">
+          {isMyTurn ? 'Klik kartu di tangan untuk memainkannya ke meja' : 'Giliran lawan sedang berjalan...'}
         </div>
       </div>
     </div>

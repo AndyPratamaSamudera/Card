@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useCosmicStore } from '../store/useCosmicStore';
 import { socketService } from '../socket/socketService';
-import { soundEngine } from '../audio/SynthAudioEngine';
 import { AIDifficulty } from '@cosmic/shared';
 import { Crown, CheckCircle2, Circle, Bot, UserX, Play, Copy, Check, Users } from 'lucide-react';
 
@@ -32,7 +31,7 @@ export const LobbyView: React.FC = () => {
     setErrorMsg(null);
     const res = await socketService.addAI(selectedBotDiff);
     if (!res.success) {
-      setErrorMsg(res.error || 'Failed to add AI');
+      setErrorMsg(res.error || 'Gagal menambahkan Bot');
     }
   };
 
@@ -44,106 +43,102 @@ export const LobbyView: React.FC = () => {
     setErrorMsg(null);
     const res = await socketService.startGame();
     if (!res.success) {
-      setErrorMsg(res.error || 'Failed to start game');
+      setErrorMsg(res.error || 'Gagal memulai game');
     }
   };
 
   return (
-    <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 pt-20 pb-12">
-      <div className="w-full max-w-3xl bg-slate-900/90 backdrop-blur-xl border border-cyan-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-cyan-950/60">
+    <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4 pt-20 pb-12 card-suits-pattern">
+      <div className="w-full max-w-2xl bg-[#141820] border border-slate-700/80 rounded-2xl p-6 sm:p-7 shadow-xl">
         {/* Lobby Header */}
-        <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-800 pb-5 mb-6 gap-4">
+        <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-800 pb-4 mb-5 gap-3">
           <div>
-            <div className="text-xs font-mono text-cyan-400 uppercase tracking-widest">STATION LOBBY</div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white">ARENA DISPATCH ROOM</h2>
+            <div className="text-xs font-mono text-slate-400 uppercase tracking-wider">RUANG TUNGGU POKER</div>
+            <h2 className="text-xl sm:text-2xl font-black text-white">ARENA CARD TABLE</h2>
           </div>
 
           {/* Room Code Card */}
-          <div className="flex items-center space-x-2 bg-slate-950 border border-cyan-500/50 px-4 py-2 rounded-xl">
-            <span className="text-xs text-slate-400 font-mono">CODE:</span>
-            <span className="text-xl font-black text-cyan-300 font-mono tracking-wider">{room.code}</span>
+          <div className="flex items-center space-x-2 bg-[#0e1117] border border-slate-700 px-3 py-1.5 rounded-lg">
+            <span className="text-xs text-slate-400 font-mono">KODE:</span>
+            <span className="text-base font-bold text-amber-300 font-mono tracking-wider">{room.code}</span>
             <button
               onClick={handleCopyLink}
-              className="ml-2 p-1.5 bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/30 text-cyan-400 rounded-lg transition flex items-center space-x-1"
+              className="ml-1 p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition flex items-center space-x-1"
             >
-              {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              <span className="text-xs">{copied ? 'Copied' : 'Invite'}</span>
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span className="text-[10px]">{copied ? 'Tersalin' : 'Undang'}</span>
             </button>
           </div>
         </div>
 
         {errorMsg && (
-          <div className="mb-4 p-3 bg-red-950/80 border border-red-500/60 rounded-xl text-red-200 text-xs font-mono">
+          <div className="mb-4 p-2.5 bg-red-950/80 border border-red-500 rounded-lg text-red-200 text-xs font-mono">
             ⚠️ {errorMsg}
           </div>
         )}
 
         {/* Players Grid (Up to 8 slots) */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-3 text-xs font-mono text-slate-400">
-            <span>SEATED GAMBLERS ({room.players.length}/{room.settings.maxPlayers})</span>
-            <span>MINIMUM 2 PLAYERS</span>
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2.5 text-xs font-mono text-slate-400">
+            <span>PEMAIN DI MEJA ({room.players.length}/{room.settings.maxPlayers})</span>
+            <span>MINIMAL 2 PEMAIN</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {room.players.map((p, idx) => {
               const isMe = p.id === myPlayerId;
               return (
                 <div
                   key={p.id}
-                  className={`relative p-3 rounded-2xl border transition flex flex-col justify-between ${
+                  className={`p-3 rounded-lg border flex items-center justify-between ${
                     p.isReady || p.isHost
-                      ? 'border-cyan-500/50 bg-cyan-950/20'
-                      : 'border-slate-800 bg-slate-950/40'
+                      ? 'border-emerald-600/40 bg-emerald-950/10'
+                      : 'border-slate-800 bg-[#0e1117]'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-mono text-slate-500">SEAT #{idx + 1}</span>
-                    <div className="flex items-center space-x-1">
-                      {p.isHost && (
-                        <span className="flex items-center space-x-0.5 text-[10px] bg-amber-500/20 border border-amber-500/40 text-amber-300 px-1.5 py-0.5 rounded-full font-bold">
-                          <Crown className="w-3 h-3 text-amber-400" />
-                          <span>HOST</span>
-                        </span>
-                      )}
-                      {p.isAI && (
-                        <span className="flex items-center space-x-0.5 text-[10px] bg-purple-500/20 border border-purple-500/40 text-purple-300 px-1.5 py-0.5 rounded-full font-bold">
-                          <Bot className="w-3 h-3 text-purple-400" />
-                          <span>BOT</span>
-                        </span>
-                      )}
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-7 h-7 rounded bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-xs font-bold text-slate-300">
+                      #{idx + 1}
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-xs text-white flex items-center space-x-1">
+                        <span>{p.username}</span>
+                        {isMe && <span className="text-[10px] text-emerald-400 font-mono">(Kamu)</span>}
+                      </div>
+
+                      <div className="flex items-center space-x-1.5 mt-0.5">
+                        {p.isHost && (
+                          <span className="flex items-center space-x-0.5 text-[9px] bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded font-bold">
+                            <Crown className="w-2.5 h-2.5 mr-0.5" /> HOST
+                          </span>
+                        )}
+                        {p.isAI && (
+                          <span className="flex items-center space-x-0.5 text-[9px] bg-purple-500/20 text-purple-300 px-1 py-0.2 rounded font-bold">
+                            <Bot className="w-2.5 h-2.5 mr-0.5" /> BOT
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="my-2">
-                    <div className="font-bold text-sm text-white flex items-center space-x-1">
-                      <span className="truncate">{p.username}</span>
-                      {isMe && <span className="text-xs text-cyan-400 font-mono">(You)</span>}
-                    </div>
-                    <div className="text-[11px] text-slate-400 capitalize">
-                      {p.avatarId.replace('alien_', '')}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                    <div className="flex items-center space-x-1">
-                      {p.isHost || p.isReady ? (
-                        <span className="flex items-center space-x-1 text-xs text-green-400 font-mono">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>READY</span>
-                        </span>
-                      ) : (
-                        <span className="flex items-center space-x-1 text-xs text-slate-500 font-mono">
-                          <Circle className="w-3.5 h-3.5" />
-                          <span>WAITING</span>
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center space-x-2">
+                    {p.isHost || p.isReady ? (
+                      <span className="flex items-center space-x-1 text-xs text-emerald-400 font-mono">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>SIAP</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center space-x-1 text-xs text-slate-500 font-mono">
+                        <Circle className="w-3.5 h-3.5" />
+                        <span>MENUNGGU</span>
+                      </span>
+                    )}
 
                     {isHost && !p.isHost && (
                       <button
                         onClick={() => handleKick(p.id)}
-                        title="Kick player"
+                        title="Keluarkan pemain"
                         className="text-slate-500 hover:text-red-400 p-1 transition"
                       >
                         <UserX className="w-3.5 h-3.5" />
@@ -153,72 +148,58 @@ export const LobbyView: React.FC = () => {
                 </div>
               );
             })}
-
-            {/* Empty Seat placeholders */}
-            {Array.from({ length: Math.max(0, 4 - room.players.length) }).map((_, i) => (
-              <div
-                key={`empty_${i}`}
-                className="p-4 rounded-2xl border border-dashed border-slate-800 bg-slate-950/20 flex flex-col items-center justify-center text-slate-600 text-xs font-mono"
-              >
-                <Users className="w-6 h-6 mb-1 opacity-40" />
-                <span>OPEN SEAT</span>
-              </div>
-            ))}
           </div>
         </div>
 
         {/* Host Controls: Add AI Bot */}
         {isHost && room.players.length < room.settings.maxPlayers && (
-          <div className="mb-6 p-4 bg-slate-950/60 border border-purple-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-5 p-3 bg-[#0e1117] border border-slate-700 rounded-lg flex items-center justify-between gap-2">
             <div className="flex items-center space-x-2">
-              <Bot className="w-5 h-5 text-purple-400" />
-              <div>
-                <div className="text-sm font-bold text-white">Add Computer AI Alien</div>
-                <div className="text-xs text-slate-400">Play instantly with strategic bots</div>
-              </div>
+              <Bot className="w-4 h-4 text-purple-400" />
+              <span className="text-xs text-slate-300">Tambah AI Bot Lawan</span>
             </div>
 
             <div className="flex items-center space-x-2">
               <select
                 value={selectedBotDiff}
                 onChange={(e) => setSelectedBotDiff(e.target.value as AIDifficulty)}
-                className="bg-slate-900 border border-slate-700 text-xs font-mono text-purple-300 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-400"
+                className="bg-slate-900 border border-slate-700 text-xs font-mono text-slate-300 rounded px-2.5 py-1 focus:outline-none"
               >
-                <option value="EASY">Difficulty: Easy</option>
-                <option value="NORMAL">Difficulty: Normal</option>
-                <option value="HARD">Difficulty: Hard</option>
+                <option value="EASY">Mudah</option>
+                <option value="NORMAL">Normal</option>
+                <option value="HARD">Sulit</option>
               </select>
 
               <button
                 onClick={handleAddAI}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold font-mono rounded-lg transition"
+                className="px-3 py-1 bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold rounded transition"
               >
-                + ADD BOT
+                + TAMBAH BOT
               </button>
             </div>
           </div>
         )}
 
         {/* Action Controls Footer */}
-        <div className="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-slate-800 gap-4">
+        <div className="flex items-center justify-between pt-3 border-t border-slate-800">
           <button
             onClick={resetGameSession}
-            className="text-xs font-mono text-slate-500 hover:text-slate-300 transition"
+            className="text-xs font-mono text-slate-400 hover:text-white transition"
           >
-            ← LEAVE LOBBY
+            ← KELUAR LOBBY
           </button>
 
-          <div className="flex items-center space-x-3 w-full sm:w-auto">
+          <div className="flex items-center space-x-2">
             {!isHost && (
               <button
                 onClick={handleToggleReady}
-                className={`flex-1 sm:flex-none py-3 px-6 rounded-xl font-bold text-sm tracking-wide transition font-mono ${
+                className={`py-2 px-4 rounded-lg font-bold text-xs transition font-mono ${
                   myPlayer?.isReady
                     ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                    : 'bg-green-600 hover:bg-green-500 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                 }`}
               >
-                {myPlayer?.isReady ? 'CANCEL READY' : 'READY TO PLAY'}
+                {myPlayer?.isReady ? 'BATAL SIAP' : 'SAYA SIAP'}
               </button>
             )}
 
@@ -226,10 +207,10 @@ export const LobbyView: React.FC = () => {
               <button
                 onClick={handleStartGame}
                 disabled={!canStart}
-                className="flex-1 sm:flex-none py-3.5 px-8 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 text-white font-black text-sm tracking-wider shadow-lg shadow-cyan-500/30 flex items-center justify-center space-x-2 transition"
+                className="py-2.5 px-6 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white font-bold text-xs tracking-wider flex items-center space-x-1.5 transition"
               >
-                <Play className="w-4 h-4 fill-current" />
-                <span>START PROTOCOL</span>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>MULAI PERMAINAN</span>
               </button>
             )}
           </div>
