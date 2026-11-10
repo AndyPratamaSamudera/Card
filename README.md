@@ -1,90 +1,59 @@
-# 🌌 COSMIC CHAOS: CARD ARENA
-### 3D Realtime Multiplayer Sci-Fi Party Card Game
+# OVERLOAD 21
 
-*Cosmic Chaos: Card Arena* adalah permainan kartu multiplayer online 3D berbasis web browser yang berlatar di kasino stasiun antargalaksi. Pemain mengendalikan karakter alien eksentrik yang saling bertanding di meja holografik, menaikkan total angka inti energi pusat tanpa memicu ledakan **Neural Overload**.
+Game kartu arcade retro (pixel art, tema neon) untuk 2–8 pemain. Mainkan kartu, jaga total meja tetap di bawah batas — kalau tembus, roll nasibmu!
 
----
+- **Lawan Bot** — offline, jalan sepenuhnya di browser
+- **Hot-Seat** — beberapa orang bergantian di satu perangkat
+- **Online** — buat/gabung room dengan kode 4 karakter
 
-## 🎮 Fitur Utama
+Semua grafis (kartu, avatar robot, ikon) digambar lewat kode, dan semua suara/musik chiptune disintesis dengan Web Audio — tidak ada file aset.
 
-- **Mode Permainan "Overload Protocol":**
-  - Akumulasi kartu angka (+1 hingga +10) menuju Overload Limit acak (28–40).
-  - 14 Kartu Spesial Taktis Original (Warp Inversion, Cryo-Stun, Overclock Surge, Antimatter Flush, Quantum Steal, Plasma Shield, Warp Swap, Hyper-Surge, Tachyon Mirror, Core Reboot, Time Bomb, Gravity Crush, Harmonic Equalizer, Glitch Pulse).
-- **Sistem Penalti Fisik "Neural Overload":**
-  - **Level 0:** Normal, idle sway.
-  - **Level 1:** Kepala alien membengkak 1.6x secara kartun.
-  - **Level 2:** Karakter bergetar hebat dengan percikan listrik statis.
-  - **Level 3 (Detonasi Kritis):** Karakter meledak kartun dan terlontar keluar ke orbit antariksa (Eliminasi).
-- **Server-Authoritative Multiplayer (Socket.IO + Fastify):**
-  - Bebas kecurangan (*Zero-Knowledge Distribution*): kartu tersembunyi pemain lain tidak pernah dikirim ke browser client.
-  - Grace period 30 detik untuk *reconnection* tanpa kehilangan giliran.
-  - Tautan undangan instan (`?room=CODE`) langsung dibagikan ke teman.
-- **Visual Tabletop 3D (React Three Fiber & Three.js):**
-  - Meja judi sci-fi futuristik dengan cincin arah giliran yang berputar secara dinamis.
-  - Inti reaktor holografik yang berubah warna dari Cyan (aman) ➔ Kuning/Oranye (peringatan) ➔ Merah membara (bahaya).
-  - 4 Spesies Alien 3D Original: Zorblax (Slime Cyclops), Vex (Cyber-Mantis), Blobbo (Puffer Beast), dan Nebula (Star Entity).
-- **AI Bot Player Cerdas:**
-  - 3 Tingkat kesulitan (Easy, Normal, Hard) dan 4 kepribadian bermain (Aggressive, Defensive, Strategic, Chaotic).
-  - Mode "Quick Solo Play vs Bots" langsung bermain tanpa menunggu teman.
-- **Audio Synthesizer Prosedural (Web Audio API):**
-  - Efek suara sci-fi instan (hover, play card, special burst, alarm bahaya, ledakan detonasi, shield deflect, melodi kemenangan) tanpa membutuhkan unduhan file MP3/WAV besar.
+## Menjalankan
 
----
-
-## 📂 Struktur Monorepo
-
-```
-.
-├── package.json
-├── tsconfig.json
-├── ASSET_CREDITS.md            # Audit lisensi CC0 dan open-source
-├── docs/
-│   ├── GDD.md                  # Game Design Document detail
-│   └── ARCHITECTURE.md         # Spesifikasi arsitektur & anti-cheat
-└── packages/
-    ├── shared/                 # Tipe TypeScript, Zod Schema, Deck Constants
-    ├── server/                 # Fastify, Socket.IO, Match Engine, AI Engine, Unit Tests
-    └── client/                 # React 18, Vite, Three.js, R3F, Tailwind CSS UI
-```
-
----
-
-## 🚀 Panduan Menjalankan Game
-
-### 1. Prasyarat
-- Node.js versi 18+ atau 20+
-- NPM versi 9+ atau 10+
-
-### 2. Instalasi Dependensi
 ```bash
 npm install
+npm run dev        # shared (watch) + server :4000 + client :3000
 ```
 
-### 3. Menjalankan Unit & Multiplayer Integration Tests
-```bash
-npm run test
-```
-*Menguji logika penjumlahan angka, proteksi overload, penyerapan shield, eliminasi 3 penalti, dan simulasi 2 pemain real-time.*
+Buka http://localhost:3000. Client mem-proxy `/socket.io` ke server, jadi mode online langsung jalan. Untuk mencoba dari HP di jaringan yang sama, buka `http://<ip-komputer>:3000`.
 
-### 4. Menjalankan Mode Development
-Jalankan backend server dan frontend client secara simultan:
-```bash
-npm run dev
-```
-- Client Frontend: `http://localhost:3000`
-- Server Backend: `http://localhost:4000`
+Produksi (server menyajikan client hasil build):
 
-### 5. Build & Menjalankan Mode Produksi
 ```bash
-# Build seluruh workspace
 npm run build
-
-# Jalankan server mandiri (otomatis menyajikan frontend statis & WebSocket di port 4000)
-npm run start --workspace=packages/server
+npm start          # http://localhost:4000  (PORT, HOST bisa diatur lewat env)
 ```
-Buka browser di: `http://localhost:4000`
 
----
+## Konfigurasi (.env)
 
-## 📜 Lisensi & Atribusi Aset
-Seluruh aset 3D, tekstur, ikon, dan audio mematuhi lisensi **Creative Commons CC0 1.0 Universal (Public Domain)** atau open-source MIT/ISC. Rincian lengkap tersedia di file [ASSET_CREDITS.md](file:///home/samudera/Projects/Personal/Ocean_Game/Card/ASSET_CREDITS.md).
+Satu file `.env` di root dibaca oleh server dan client. Salin dari contoh:
+
+```bash
+cp .env.example .env
+```
+
+| Variabel | Default | Fungsi |
+|---|---|---|
+| `SERVER_PORT` | 4000 | Port backend (di produksi juga menyajikan client) |
+| `SERVER_HOST` | 0.0.0.0 | Alamat bind backend |
+| `CLIENT_PORT` | 3000 | Port dev server Vite (`npm run dev`) |
+| `CLIENT_HOST` | 0.0.0.0 | Alamat bind dev server Vite |
+
+Client otomatis mem-proxy ke `SERVER_PORT`, jadi cukup ubah `.env` saja. Variabel environment sistem (dan `PORT` dari platform hosting) tetap menang atas isi `.env`.
+
+## Perintah lain
+
+| Perintah | Isi |
+|---|---|
+| `npm test` | Test engine (termasuk simulasi 1.000 match bot) + test integrasi socket |
+| `npm run typecheck` | `tsc --noEmit` untuk ketiga package |
+
+## Struktur
+
+```
+packages/shared   engine murni (aturan, AI, runner), tipe, protokol socket + validasi zod
+packages/server   Fastify + Socket.IO: room, reconnect, bot pengganti
+packages/client   React + Vite + Tailwind + Zustand: UI pixel, audio chiptune
+```
+
+Aturan lengkap: [docs/GDD.md](docs/GDD.md). Arsitektur: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

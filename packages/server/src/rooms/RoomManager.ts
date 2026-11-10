@@ -1,436 +1,269 @@
-import {
-  Player,
-  RoomState,
-  RoomSettings,
-  AlienAvatarId,
-  AIDifficulty,
-  GAME_BALANCE,
-  PlayerPrivateView
-} from '@cosmic/shared';
-import { MatchEngine, PlayCardResult } from '../engine/MatchEngine.js';
+import crypto from 'node:crypto';
+import type { Ack, JoinedAck, MatchSettings, MatchView, RoomView } from '@overload21/shared';
+import { GameRoom, type Member, type RoomOutput } from './GameRoom.js';
 
-export interface RoomSession {
-  socketId: string;
-  sessionToken: string;
-  playerId: string;
-  roomCode: string;
+export interface Transport {
+  emit(socketId: string, event: 'room:state', payload: RoomView): void;
+  emit(socketId: string, event: 'game:view', payload: MatchView): void;
+  emit(socketId: string, event: 'room:gone', payload: { reason: string }): void;
 }
 
+export interface ManagerOptions {
+  /** Lobby: remove a disconnected member after this long */
+  lobbyGraceMs?: number;
+  /** Match: give a disconnected human's seat to the bot after this long */
+  autopilotGraceMs?: number;
+  /** Close a room when no human has been connected for this long */
+  emptyRoomMs?: number;
+  botDelayMs?: [number, number];
+}
+
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+interface SocketBinding {
+  code: string;
+  playerId: string;
+}
+
+/**
+ * Owns all rooms and the socket ↔ player mapping. Every public method takes
+ * the caller's socket id and returns an Ack; it never throws on bad input.
+ */
 export class RoomManager {
-  private rooms: Map<string, RoomState> = new Map();
-  private matchEngines: Map<string, MatchEngine> = new Map();
-  private sessions: Map<string, RoomSession> = new Map(); // socketId -> Session
-  private playerTokens: Map<string, RoomSession> = new Map(); // sessionToken -> Session
-  private disconnectTimers: Map<string, NodeJS.Timeout> = new Map();
-  private aiTurnTimers: Map<string, NodeJS.Timeout> = new Map();
+  readonly rooms = new Map<string, GameRoom>();
+  private readonly bindings = new Map<string, SocketBinding>();
+  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly opts: Required<ManagerOptions>;
 
-  // Callbacks for broadcasting to sockets
-  public onBroadcastRoomState?: (roomCode: string, state: RoomState) => void;
-  public onBroadcastGameState?: (roomCode: string, engine: MatchEngine) => void;
-  public onEmitToPlayer?: (playerId: string, event: string, data: unknown) => void;
-
-  public createRoom(
-    hostUsername: string,
-    hostAvatarId: AlienAvatarId,
-    socketId: string
-  ): { room: RoomState; player: Player; sessionToken: string } {
-    const roomCode = this.generateRoomCode();
-    const playerId = `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const sessionToken = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
-
-    const hostPlayer: Player = {
-      id: playerId,
-      username: hostUsername,
-      avatarId: hostAvatarId,
-      seatIndex: 0,
-      isReady: true,
-      isHost: true,
-      isAI: false,
-      isConnected: true,
-      overloadLevel: 0,
-      hasShield: false,
-      timeBombTurnsRemaining: null,
-      isGlitchScrambled: false,
-      isEliminated: false,
-      cardsInHandCount: 0
+  constructor(private readonly transport: Transport, opts: ManagerOptions = {}) {
+    this.opts = {
+      lobbyGraceMs: 20_000,
+      autopilotGraceMs: 5_000,
+      emptyRoomMs: 120_000,
+      botDelayMs: [900, 1700],
+      ...opts,
     };
+  }
 
-    const settings: RoomSettings = {
-      maxPlayers: GAME_BALANCE.MAX_PLAYERS,
-      turnDurationSeconds: GAME_BALANCE.TURN_DURATION_SECONDS,
-      baseOverloadLimit: 30,
-      maxPenalties: GAME_BALANCE.MAX_PENALTIES_BEFORE_ELIMINATION
-    };
+  // ─── lifecycle ────────────────────────────────────────────────────────────
+  create(socketId: string, name: string, avatar: number): Ack<JoinedAck> {
+    this.leave(socketId);
+    const room = new GameRoom(this.newCode(), this.output(), { botDelayMs: this.opts.botDelayMs });
+    this.rooms.set(room.code, room);
+    const m = room.addHuman(name, avatar, socketId);
+    this.bind(socketId, room, m);
+    room.broadcastRoom();
+    return { ok: true, code: room.code, playerId: m.id, token: m.token };
+  }
 
-    const room: RoomState = {
-      code: roomCode,
-      hostId: playerId,
-      status: 'LOBBY',
-      players: [hostPlayer],
-      settings,
-      createdAt: Date.now()
-    };
+  join(socketId: string, code: string, name: string, avatar: number): Ack<JoinedAck> {
+    const room = this.rooms.get(code);
+    if (!room) return { ok: false, error: `Room ${code} tidak ditemukan.` };
+    if (room.status !== 'LOBBY') return { ok: false, error: 'Match di room ini sudah berjalan.' };
+    if (room.isFull) return { ok: false, error: 'Room penuh.' };
+    this.leave(socketId);
+    const m = room.addHuman(name, avatar, socketId);
+    this.bind(socketId, room, m);
+    this.clearTimer(`room:${room.code}`);
+    room.broadcastRoom();
+    return { ok: true, code: room.code, playerId: m.id, token: m.token };
+  }
 
-    this.rooms.set(roomCode, room);
+  reconnect(socketId: string, code: string, token: string): Ack<JoinedAck> {
+    const room = this.rooms.get(code);
+    const m = room?.members.find((x) => !x.isBot && x.token === token);
+    if (!room || !m) return { ok: false, error: 'Sesi sudah tidak berlaku.' };
+    // Drop whatever this socket was bound to before, and the member's old socket.
+    const prev = this.bindings.get(socketId);
+    if (prev && (prev.code !== code || prev.playerId !== m.id)) this.leave(socketId);
+    if (m.socketId && m.socketId !== socketId) {
+      this.bindings.delete(m.socketId);
+      this.transport.emit(m.socketId, 'room:gone', { reason: 'Akunmu tersambung dari tab lain.' });
+    }
+    this.bind(socketId, room, m);
+    this.clearTimer(`member:${m.id}`);
+    this.clearTimer(`room:${room.code}`);
+    room.setAutopilot(m.id, false);
+    room.broadcastRoom();
+    room.broadcastGame();
+    return { ok: true, code: room.code, playerId: m.id, token: m.token };
+  }
 
-    const session: RoomSession = {
+  /** Voluntary leave (also used before create/join). */
+  leave(socketId: string): Ack {
+    const ctx = this.ctx(socketId);
+    this.bindings.delete(socketId);
+    if (!ctx) return { ok: true };
+    this.dropMember(ctx.room, ctx.member.id);
+    return { ok: true };
+  }
+
+  disconnect(socketId: string): void {
+    const ctx = this.ctx(socketId);
+    this.bindings.delete(socketId);
+    if (!ctx) return;
+    const { room, member } = ctx;
+    room.setConnected(member.id, null);
+
+    if (room.status === 'LOBBY') {
+      this.setTimer(`member:${member.id}`, this.opts.lobbyGraceMs, () => {
+        if (!member.socketId) this.dropMember(room, member.id);
+      });
+    } else {
+      this.setTimer(`member:${member.id}`, this.opts.autopilotGraceMs, () => {
+        if (!member.socketId) room.setAutopilot(member.id, true);
+      });
+    }
+
+    if (!room.humans.some((h) => h.socketId)) {
+      this.setTimer(`room:${room.code}`, this.opts.emptyRoomMs, () => {
+        if (!room.humans.some((h) => h.socketId)) this.closeRoom(room);
+      });
+    }
+    room.broadcastRoom();
+    room.broadcastGame();
+  }
+
+  // ─── room actions ─────────────────────────────────────────────────────────
+  setReady(socketId: string, ready: boolean): Ack {
+    return this.withRoom(socketId, (room, m) => room.setReady(m.id, ready), 'room');
+  }
+
+  updateSettings(socketId: string, patch: Partial<MatchSettings>): Ack {
+    return this.withRoom(socketId, (room, m) => room.updateSettings(m.id, patch), 'room');
+  }
+
+  addBot(socketId: string): Ack {
+    return this.withRoom(
       socketId,
-      sessionToken,
-      playerId,
-      roomCode
-    };
-    this.sessions.set(socketId, session);
-    this.playerTokens.set(sessionToken, session);
-
-    return { room, player: hostPlayer, sessionToken };
+      (room, m) => (m.id === room.hostId ? room.addBot() : { ok: false, error: 'Hanya host yang bisa menambah bot.' }),
+      'room',
+    );
   }
 
-  public joinRoom(
-    roomCode: string,
-    username: string,
-    avatarId: AlienAvatarId,
-    socketId: string
-  ): { success: boolean; error?: string; room?: RoomState; player?: Player; sessionToken?: string } {
-    const normalizedCode = roomCode.trim().toUpperCase();
-    const room = this.rooms.get(normalizedCode);
-
-    if (!room) {
-      return { success: false, error: 'Room not found' };
-    }
-
-    if (room.status !== 'LOBBY') {
-      return { success: false, error: 'Match is already in progress' };
-    }
-
-    if (room.players.length >= room.settings.maxPlayers) {
-      return { success: false, error: 'Room is full' };
-    }
-
-    const playerId = `p_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const sessionToken = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
-
-    const player: Player = {
-      id: playerId,
-      username,
-      avatarId,
-      seatIndex: room.players.length,
-      isReady: false,
-      isHost: false,
-      isAI: false,
-      isConnected: true,
-      overloadLevel: 0,
-      hasShield: false,
-      timeBombTurnsRemaining: null,
-      isGlitchScrambled: false,
-      isEliminated: false,
-      cardsInHandCount: 0
-    };
-
-    room.players.push(player);
-
-    const session: RoomSession = {
+  kick(socketId: string, targetId: string): Ack {
+    return this.withRoom(
       socketId,
-      sessionToken,
-      playerId,
-      roomCode: normalizedCode
-    };
-    this.sessions.set(socketId, session);
-    this.playerTokens.set(sessionToken, session);
-
-    return { success: true, room, player, sessionToken };
+      (room, m) => {
+        const res = room.kick(m.id, targetId);
+        if (!res.ok) return res;
+        this.clearTimer(`member:${targetId}`);
+        const sid = res.member.socketId;
+        if (sid) {
+          this.bindings.delete(sid);
+          this.transport.emit(sid, 'room:gone', { reason: 'Kamu dikeluarkan oleh host.' });
+        }
+        return { ok: true };
+      },
+      'room',
+    );
   }
 
-  public addAIPlayer(
-    roomCode: string,
-    difficulty: AIDifficulty = 'NORMAL'
-  ): { success: boolean; error?: string; aiPlayer?: Player } {
-    const room = this.rooms.get(roomCode);
-    if (!room) return { success: false, error: 'Room not found' };
-    if (room.status !== 'LOBBY') return { success: false, error: 'Match already started' };
-    if (room.players.length >= room.settings.maxPlayers) return { success: false, error: 'Room is full' };
-
-    const aiIndex = room.players.filter(p => p.isAI).length + 1;
-    const aiAvatars: AlienAvatarId[] = ['alien_zorblax', 'alien_vex', 'alien_blobbo', 'alien_nebula'];
-    const aiAvatar = aiAvatars[aiIndex % aiAvatars.length];
-    const aiNames = ['Gloop-9', 'Cyber-Zorg', 'Cosmo-Blip', 'Nebula-Bot', 'Hyper-X', 'Void-Crawler'];
-    const aiName = aiNames[(aiIndex - 1) % aiNames.length];
-
-    const aiPlayer: Player = {
-      id: `ai_${Date.now()}_${aiIndex}`,
-      username: `${aiName} (${difficulty})`,
-      avatarId: aiAvatar,
-      seatIndex: room.players.length,
-      isReady: true,
-      isHost: false,
-      isAI: true,
-      aiDifficulty: difficulty,
-      isConnected: true,
-      overloadLevel: 0,
-      hasShield: false,
-      timeBombTurnsRemaining: null,
-      isGlitchScrambled: false,
-      isEliminated: false,
-      cardsInHandCount: 0
-    };
-
-    room.players.push(aiPlayer);
-    return { success: true, aiPlayer };
+  start(socketId: string): Ack {
+    return this.withRoom(socketId, (room, m) => room.start(m.id), 'room');
   }
 
-  public removePlayer(roomCode: string, playerId: string): boolean {
-    const room = this.rooms.get(roomCode);
-    if (!room) return false;
-
-    const idx = room.players.findIndex(p => p.id === playerId);
-    if (idx === -1) return false;
-
-    const removed = room.players.splice(idx, 1)[0];
-
-    // Re-index seats
-    room.players.forEach((p, i) => {
-      p.seatIndex = i;
-    });
-
-    // If host was removed, elect new host if players remain
-    if (removed.isHost && room.players.length > 0) {
-      const nonAI = room.players.find(p => !p.isAI) || room.players[0];
-      nonAI.isHost = true;
-      room.hostId = nonAI.id;
-    }
-
-    if (room.players.length === 0) {
-      this.rooms.delete(roomCode);
-      this.matchEngines.delete(roomCode);
-    }
-
-    return true;
+  play(socketId: string, cardId: string): Ack {
+    // The runner broadcasts game views on every successful action.
+    return this.withRoom(socketId, (room, m) => room.play(m.id, cardId), 'none');
   }
 
-  public toggleReady(socketId: string): RoomState | null {
-    const session = this.sessions.get(socketId);
-    if (!session) return null;
-
-    const room = this.rooms.get(session.roomCode);
-    if (!room || room.status !== 'LOBBY') return null;
-
-    const player = room.players.find(p => p.id === session.playerId);
-    if (player && !player.isHost) {
-      player.isReady = !player.isReady;
-    }
-    return room;
+  rematch(socketId: string): Ack {
+    return this.withRoom(socketId, (room, m) => room.rematch(m.id), 'room');
   }
 
-  public startMatch(socketId: string): { success: boolean; error?: string; engine?: MatchEngine } {
-    const session = this.sessions.get(socketId);
-    if (!session) return { success: false, error: 'Session not found' };
-
-    const room = this.rooms.get(session.roomCode);
-    if (!room) return { success: false, error: 'Room not found' };
-
-    if (room.hostId !== session.playerId) {
-      return { success: false, error: 'Only the host can start the game' };
-    }
-
-    if (room.players.length < GAME_BALANCE.MIN_PLAYERS) {
-      return { success: false, error: `At least ${GAME_BALANCE.MIN_PLAYERS} players are required to start` };
-    }
-
-    const unready = room.players.filter(p => !p.isHost && !p.isReady);
-    if (unready.length > 0) {
-      return { success: false, error: 'Not all players are ready' };
-    }
-
-    room.status = 'PLAYING';
-    const matchEngine = new MatchEngine(`m_${room.code}_${Date.now()}`, room.players);
-    this.matchEngines.set(room.code, matchEngine);
-
-    // Check if initial turn is AI
-    this.triggerAITurnIfNeeded(room.code);
-
-    return { success: true, engine: matchEngine };
+  shutdown(): void {
+    for (const t of this.timers.values()) clearTimeout(t);
+    this.timers.clear();
+    for (const r of this.rooms.values()) r.dispose();
+    this.rooms.clear();
+    this.bindings.clear();
   }
 
-  public playCard(socketId: string, cardId: string, targetPlayerId?: string): PlayCardResult {
-    const session = this.sessions.get(socketId);
-    if (!session) {
-      return { success: false, error: 'Not in a session', events: [], isMatchOver: false, winnerPlayerId: null };
-    }
-
-    const engine = this.matchEngines.get(session.roomCode);
-    if (!engine) {
-      return { success: false, error: 'No active match in room', events: [], isMatchOver: false, winnerPlayerId: null };
-    }
-
-    const result = engine.playCard(session.playerId, cardId, targetPlayerId);
-
-    if (result.success) {
-      if (result.isMatchOver) {
-        const room = this.rooms.get(session.roomCode);
-        if (room) room.status = 'MATCH_OVER';
-      } else {
-        // Trigger next AI turn if applicable
-        this.triggerAITurnIfNeeded(session.roomCode);
-      }
-    }
-
-    return result;
+  // ─── internals ────────────────────────────────────────────────────────────
+  private withRoom(
+    socketId: string,
+    fn: (room: GameRoom, m: Member) => Ack,
+    broadcast: 'room' | 'none',
+  ): Ack {
+    const ctx = this.ctx(socketId);
+    if (!ctx) return { ok: false, error: 'Kamu belum masuk room.' };
+    const res = fn(ctx.room, ctx.member);
+    if (res.ok && broadcast === 'room') ctx.room.broadcastRoom();
+    return res;
   }
 
-  public triggerAITurnIfNeeded(roomCode: string): void {
-    const engine = this.matchEngines.get(roomCode);
-    if (!engine) return;
-
-    const publicState = engine.getPublicGameState();
-    const activePlayer = publicState.players.find(p => p.id === publicState.turn.activePlayerId);
-
-    if (!activePlayer || !activePlayer.isAI || activePlayer.isEliminated || publicState.winnerPlayerId) {
+  private dropMember(room: GameRoom, memberId: string) {
+    this.clearTimer(`member:${memberId}`);
+    const m = room.member(memberId);
+    if (m?.socketId) this.bindings.delete(m.socketId);
+    const anyHumans = room.removeMember(memberId);
+    if (!anyHumans) {
+      this.closeRoom(room);
       return;
     }
+    room.broadcastRoom();
+  }
 
-    // Clear existing timer if any
-    const existingTimer = this.aiTurnTimers.get(roomCode);
-    if (existingTimer) clearTimeout(existingTimer);
-
-    // Natural bot think delay: 1000ms - 2000ms
-    const thinkDelay = 1200 + Math.floor(Math.random() * 800);
-
-    const timer = setTimeout(() => {
-      const currentEngine = this.matchEngines.get(roomCode);
-      if (!currentEngine) return;
-
-      const decision = currentEngine.getAIPlayerDecision();
-      if (decision) {
-        const res = currentEngine.playCard(activePlayer.id, decision.cardId, decision.targetPlayerId);
-
-        // Broadcast game state update
-        if (this.onBroadcastGameState) {
-          this.onBroadcastGameState(roomCode, currentEngine);
-        }
-
-        if (res.isMatchOver) {
-          const room = this.rooms.get(roomCode);
-          if (room) room.status = 'MATCH_OVER';
-        } else {
-          // Check if next turn is also AI
-          this.triggerAITurnIfNeeded(roomCode);
-        }
+  private closeRoom(room: GameRoom) {
+    for (const m of room.members) {
+      this.clearTimer(`member:${m.id}`);
+      if (m.socketId) {
+        this.bindings.delete(m.socketId);
+        this.transport.emit(m.socketId, 'room:gone', { reason: 'Room ditutup.' });
       }
-    }, thinkDelay);
-
-    this.aiTurnTimers.set(roomCode, timer);
-  }
-
-  public handleDisconnect(socketId: string): void {
-    const session = this.sessions.get(socketId);
-    if (!session) return;
-
-    const room = this.rooms.get(session.roomCode);
-    if (!room) return;
-
-    const player = room.players.find(p => p.id === session.playerId);
-    if (!player) return;
-
-    player.isConnected = false;
-
-    // Broadcast room update
-    if (this.onBroadcastRoomState) {
-      this.onBroadcastRoomState(room.code, room);
     }
-
-    // Set 30s grace timer for reconnect
-    const timer = setTimeout(() => {
-      // If still disconnected after grace period, remove player or replace with AI
-      if (!player.isConnected) {
-        if (room.status === 'LOBBY') {
-          this.removePlayer(room.code, player.id);
-          if (this.onBroadcastRoomState) {
-            this.onBroadcastRoomState(room.code, room);
-          }
-        } else {
-          // In active match, convert into AI bot so match is never blocked!
-          player.isAI = true;
-          player.username = `${player.username} (Bot)`;
-          this.triggerAITurnIfNeeded(room.code);
-        }
-      }
-    }, GAME_BALANCE.DISCONNECT_GRACE_SECONDS * 1000);
-
-    this.disconnectTimers.set(session.playerId, timer);
+    this.clearTimer(`room:${room.code}`);
+    room.dispose();
+    this.rooms.delete(room.code);
   }
 
-  public handleReconnect(
-    sessionToken: string,
-    newSocketId: string
-  ): { success: boolean; room?: RoomState; privateView?: PlayerPrivateView } {
-    const session = this.playerTokens.get(sessionToken);
-    if (!session) return { success: false };
-
-    const room = this.rooms.get(session.roomCode);
-    if (!room) return { success: false };
-
-    const player = room.players.find(p => p.id === session.playerId);
-    if (!player) return { success: false };
-
-    // Clear grace timer
-    const timer = this.disconnectTimers.get(player.id);
-    if (timer) {
-      clearTimeout(timer);
-      this.disconnectTimers.delete(player.id);
+  private ctx(socketId: string): { room: GameRoom; member: Member } | null {
+    const b = this.bindings.get(socketId);
+    if (!b) return null;
+    const room = this.rooms.get(b.code);
+    const member = room?.member(b.playerId);
+    if (!room || !member) {
+      this.bindings.delete(socketId);
+      return null;
     }
-
-    // Re-bind socket
-    this.sessions.delete(session.socketId);
-    session.socketId = newSocketId;
-    this.sessions.set(newSocketId, session);
-    player.isConnected = true;
-
-    const engine = this.matchEngines.get(room.code);
-    const privateView = engine ? engine.getPlayerPrivateView(player.id) : undefined;
-
-    return { success: true, room, privateView };
+    return { room, member };
   }
 
-  public rematch(socketId: string): { success: boolean; room?: RoomState } {
-    const session = this.sessions.get(socketId);
-    if (!session) return { success: false };
+  private bind(socketId: string, room: GameRoom, m: Member) {
+    m.socketId = socketId;
+    this.bindings.set(socketId, { code: room.code, playerId: m.id });
+  }
 
-    const room = this.rooms.get(session.roomCode);
-    if (!room) return { success: false };
-
-    if (room.hostId !== session.playerId) return { success: false };
-
-    room.status = 'LOBBY';
-    this.matchEngines.delete(room.code);
-
-    // Reset player readiness
-    for (const p of room.players) {
-      p.isReady = p.isHost || p.isAI;
-      p.isEliminated = false;
-      p.overloadLevel = 0;
-      p.cardsInHandCount = 0;
+  private newCode(): string {
+    for (;;) {
+      let code = '';
+      for (let i = 0; i < 4; i++) code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
+      if (!this.rooms.has(code)) return code;
     }
-
-    return { success: true, room };
   }
 
-  public getRoomByCode(code: string): RoomState | undefined {
-    return this.rooms.get(code.trim().toUpperCase());
+  private setTimer(key: string, ms: number, fn: () => void) {
+    this.clearTimer(key);
+    this.timers.set(
+      key,
+      setTimeout(() => {
+        this.timers.delete(key);
+        fn();
+      }, ms),
+    );
   }
 
-  public getSessionBySocketId(socketId: string): RoomSession | undefined {
-    return this.sessions.get(socketId);
+  private clearTimer(key: string) {
+    const t = this.timers.get(key);
+    if (t) clearTimeout(t);
+    this.timers.delete(key);
   }
 
-  public getMatchEngine(roomCode: string): MatchEngine | undefined {
-    return this.matchEngines.get(roomCode);
-  }
-
-  private generateRoomCode(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = 'CC-';
-    for (let i = 0; i < 4; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
+  private output(): RoomOutput {
+    return {
+      roomState: (sid, room) => this.transport.emit(sid, 'room:state', room),
+      gameView: (sid, view) => this.transport.emit(sid, 'game:view', view),
+    };
   }
 }

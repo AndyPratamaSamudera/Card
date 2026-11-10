@@ -1,32 +1,45 @@
-# SYSTEM ARCHITECTURE SPECIFICATION
-# COSMIC CHAOS: CARD ARENA
+# Arsitektur
 
-## 1. Architecture Paradigm
-- **Pattern:** Strict Server-Authoritative Architecture.
-- **Protocol:** WebSocket via Socket.IO with bi-directional typed events.
-- **Client Render Engine:** Three.js / React Three Fiber + Tailwind CSS HTML HUD.
-- **Backend Runtime:** Node.js + Fastify + TypeScript.
-- **Database:** PostgreSQL (with Drizzle ORM).
+```
+packages/shared   ← dipakai server DAN browser
+  engine/types.ts      MatchState, Action, MatchView
+  engine/reducer.ts    createMatch(), applyAction(state, action) → {ok, state} | {ok:false, error}
+  engine/rules.ts      legalMoves() — satu-satunya definisi "kartu sah"
+  engine/ai.ts         chooseMove() — selalu memilih dari legalMoves()
+  engine/runner.ts     MatchRunner: timer roll, gerakan bot, timer giliran
+  engine/view.ts       buildView() — apa yang boleh dilihat satu pemain
+  protocol/index.ts    nama event socket + schema zod semua payload
+packages/server
+  app.ts               Fastify + Socket.IO; handler tipis dengan validasi + ack aman
+  rooms/RoomManager.ts socket ↔ pemain, buat/gabung/reconnect, timer grace
+  rooms/GameRoom.ts    lobby + satu MatchRunner per match
+packages/client
+  game/session.ts      backend lokal (MatchRunner di browser) atau online (socket)
+  store/store.ts       zustand: layar, preferensi, view terakhir
+  screens/             Title, Menu, Setup, Online, Lobby, Table (+ overlay)
+  ui/                  komponen pixel, sprite dari grid teks
+  audio/audio.ts       sfx + sequencer musik chiptune (Web Audio)
+```
 
----
+## Prinsip
 
-## 2. Security & Anti-Cheat Guarantees
-1. **Server Validation:** All card plays, turn timers, score totals, and penalties are calculated exclusively on the server.
-2. **Hidden Hand Protection:** The server sanitizes the broadcast state so that a client only receives the cards in their own hand. Other players' hands are represented solely as an integer count (`cardCount`).
-3. **Turn Enforcement:** If a client emits a `game:play_card` event outside their active turn or for a card not present in their validated server hand, the server rejects the action with error payload `NOT_YOUR_TURN` or `INVALID_CARD`.
-4. **Idempotent Actions & Nonce:** Every play request contains a monotonic event id / nonce to eliminate duplicate packets from high-latency connections.
+1. **Satu sumber kebenaran.** Semua state match ada di `MatchState` milik engine. Room server hanya menyimpan info koneksi. Bot pengganti, keluar, dan kick dijalankan sebagai action engine (`SET_AUTOPILOT`, `REMOVE_PLAYER`).
+2. **Reducer murni.** `applyAction` meng-clone state, tidak memakai jam atau `Math.random` (RNG seeded tersimpan di state). Mudah dites dan bisa diputar ulang.
+3. **Fase eksplisit.** `TURN → RESOLVING → TURN … → OVER`. Selama `RESOLVING` (animasi roll) semua permainan kartu ditolak. `MatchRunner` mengirim `RESOLVE` setelah `resolveDurationMs()`.
+4. **Satu timer per match.** Runner hanya punya satu timer aktif; setiap callback memeriksa ulang `turnSeq`/`resolution.id`, jadi timer basi tidak bisa menyentuh giliran baru.
+5. **Tidak bisa macet.** Timeout giliran dan bot memakai `legalMoves()`; aturan Terjebak menjamin selalu ada kartu sah. Simulasi 1.000 match acak di test memastikan setiap match selesai dengan tepat satu pemenang.
+6. **Tidak ada kebocoran.** `buildView()` tidak menyertakan deck, state RNG, atau tangan pemain lain. Server mengirim satu `game:view` per pemain dengan `version` naik; client mengabaikan view lama.
 
----
+## Alur online
 
-## 3. Disconnection & Reconnection Strategy
-- When a socket disconnects, the server marks the player as `DISCONNECTED` and starts a 30-second grace timer.
-- Other players see a disconnected indicator next to the player's avatar.
-- If the player reconnects with their valid `sessionToken` within 30 seconds, the server re-binds their socket and dispatches a full `game:reconnect_success` state snapshot.
-- If the 30-second timer expires, the server smoothly substitutes a bot AI to play the turn so the match flow is never blocked.
+```
+client ──emit(event, payload, ack)──▶ app.ts handle(): zod.safeParse → RoomManager → GameRoom → MatchRunner.dispatch
+                                                                                   │ onChange
+client ◀── room:state / game:view (per socket) ◀── GameRoom.broadcastRoom/Game ◀──┘
+```
 
----
+Reconnect: client menyimpan `{code, token}` di localStorage dan mengirim `room:reconnect` setiap kali socket tersambung (termasuk setelah refresh).
 
-## 4. Scalability & Deployment
-- Fastify provides ultra-low HTTP overhead.
-- Socket.IO rooms isolate network broadcast traffic per game room code (`room:<code>`).
-- Fully compatible with Nginx / Apache 2 reverse proxies (`Upgrade: websocket` headers).
+## Mode lokal
+
+`game/session.ts` membuat `MatchRunner` yang sama di browser. Hot-seat memakai `manualHumanTimer`: timer giliran baru mulai setelah pemain menekan "Saya Siap" di layar oper perangkat.

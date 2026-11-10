@@ -1,18 +1,17 @@
 {
-  "name": "cosmic-chaos-card-arena",
+  "name": "overload21",
   "version": "1.0.0",
   "private": true,
-  "description": "Cosmic Chaos: Card Arena - 3D Realtime Multiplayer Sci-Fi Card Game",
+  "description": "OVERLOAD 21 \u2014 retro arcade multiplayer card game",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
-    "test": "npm run test --workspace=packages/server",
-    "dev:shared": "npm run dev --workspace=packages/shared",
-    "dev:server": "npm run dev --workspace=packages/server",
-    "dev:client": "npm run dev --workspace=packages/client",
-    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"npm run dev:server\" \"npm run dev:client\""
+    "build": "npm run build -w packages/shared && npm run build -w packages/server && npm run build -w packages/client",
+    "test": "npm run build -w packages/shared && npm run test -w packages/shared && npm run test -w packages/server",
+    "typecheck": "npm run build -w packages/shared && tsc --noEmit -p packages/server && tsc --noEmit -p packages/client",
+    "dev": "npm run build -w packages/shared && concurrently -n SHARED,SERVER,CLIENT -c yellow,cyan,magenta \"npm run dev -w packages/shared\" \"npm run dev -w packages/server\" \"npm run dev -w packages/client\"",
+    "start": "npm run start -w packages/server"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

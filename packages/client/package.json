@@ -1,5 +1,5 @@
 {
-  "name": "@cosmic/client",
+  "name": "@overload21/client",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -9,24 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@cosmic/shared": "*",
-    "@react-three/drei": "^9.106.0",
-    "@react-three/fiber": "^8.16.8",
-    "canvas-confetti": "^1.9.3",
-    "clsx": "^2.1.1",
-    "lucide-react": "^0.381.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "socket.io-client": "^4.7.5",
-    "tailwind-merge": "^2.3.0",
-    "three": "^0.165.0",
-    "zustand": "^4.5.2"
+    "zustand": "^4.5.2",
+    "@overload21/shared": "*"
   },
   "devDependencies": {
-    "@types/canvas-confetti": "^1.9.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@types/three": "^0.165.0",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",

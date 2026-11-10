@@ -1,5 +1,5 @@
 {
-  "name": "@cosmic/shared",
+  "name": "@overload21/shared",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -13,12 +13,14 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch --preserveWatchOutput",
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
   }
 }

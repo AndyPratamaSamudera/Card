@@ -3,65 +3,173 @@
 @tailwind utilities;
 
 @layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    @apply bg-ink text-snow font-term;
+    font-size: 20px;
+    line-height: 1.15;
     user-select: none;
     -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    background-color: #0b0d11;
+    image-rendering: pixelated;
+    overflow: hidden;
+  }
+  button {
+    @apply font-pixel;
+  }
+  input,
+  select {
+    @apply font-term;
+    font-size: 22px;
+  }
+  :focus-visible {
+    outline: 2px dashed theme('colors.sun');
+    outline-offset: 3px;
   }
 }
 
-/* Classic Casino Suits Wallpaper */
-.casino-bg {
-  background-color: #0c0e12;
-  background-image: radial-gradient(#151821 15%, transparent 16%),
-                    radial-gradient(#151821 15%, transparent 16%);
-  background-size: 60px 60px;
-  background-position: 0 0, 30px 30px;
+@layer components {
+  /* Chunky pixel frame with notched corners. Color via --px (default line). */
+  .px-box {
+    --px: theme('colors.line');
+    --bg: theme('colors.panel');
+    background: var(--bg);
+    box-shadow:
+      0 -4px 0 0 var(--px),
+      0 4px 0 0 var(--px),
+      -4px 0 0 0 var(--px),
+      4px 0 0 0 var(--px),
+      0 8px 0 0 rgba(0, 0, 0, 0.45);
+  }
+
+  .px-btn {
+    --px: theme('colors.cyan');
+    --bg: theme('colors.panel2');
+    @apply relative inline-flex items-center justify-center gap-2 px-4 text-[10px] sm:text-xs uppercase tracking-wider text-snow;
+    min-height: 44px;
+    background: var(--bg);
+    box-shadow:
+      0 -4px 0 0 var(--px),
+      0 4px 0 0 var(--px),
+      -4px 0 0 0 var(--px),
+      4px 0 0 0 var(--px),
+      inset 0 -4px 0 0 rgba(0, 0, 0, 0.35);
+    transition: transform 60ms steps(1);
+  }
+  .px-btn:hover:not(:disabled) {
+    --bg: color-mix(in srgb, var(--px) 22%, theme('colors.panel2'));
+  }
+  .px-btn:active:not(:disabled) {
+    transform: translateY(3px);
+  }
+  .px-btn:disabled {
+    --px: theme('colors.line');
+    @apply cursor-not-allowed text-dim;
+  }
+  .px-btn-primary {
+    --px: theme('colors.sun');
+    --bg: #3a2e05;
+  }
+  .px-btn-danger {
+    --px: theme('colors.blood');
+    --bg: #3a0b16;
+  }
+  .px-btn-pink {
+    --px: theme('colors.pink');
+    --bg: #3a0b36;
+  }
+  .px-btn-lime {
+    --px: theme('colors.lime');
+    --bg: #0b3a1a;
+  }
+
+  .px-input {
+    @apply w-full bg-ink px-3 py-2 text-snow outline-none;
+    box-shadow:
+      0 -4px 0 0 theme('colors.line'),
+      0 4px 0 0 theme('colors.line'),
+      -4px 0 0 0 theme('colors.line'),
+      4px 0 0 0 theme('colors.line');
+  }
+  .px-input:focus {
+    box-shadow:
+      0 -4px 0 0 theme('colors.cyan'),
+      0 4px 0 0 theme('colors.cyan'),
+      -4px 0 0 0 theme('colors.cyan'),
+      4px 0 0 0 theme('colors.cyan');
+  }
+
+  .glow-cyan {
+    text-shadow: 0 0 6px rgba(41, 240, 255, 0.8), 3px 3px 0 #0a0618;
+  }
+  .glow-pink {
+    text-shadow: 0 0 6px rgba(255, 61, 242, 0.8), 3px 3px 0 #0a0618;
+  }
+  .glow-sun {
+    text-shadow: 0 0 6px rgba(255, 226, 61, 0.8), 3px 3px 0 #0a0618;
+  }
+  .glow-blood {
+    text-shadow: 0 0 8px rgba(255, 61, 90, 0.9), 3px 3px 0 #0a0618;
+  }
+  .glow-lime {
+    text-shadow: 0 0 6px rgba(61, 255, 122, 0.8), 3px 3px 0 #0a0618;
+  }
 }
 
-/* Card suits pattern overlay */
-.card-suits-pattern {
-  background-color: #0d1015;
-  background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23171b23' fill-opacity='0.6'%3E%3Cpath d='M20 12c-2.5-3.5-7-2-7 1.5 0 2 2.5 4 7 8.5 4.5-4.5 7-6.5 7-8.5 0-3.5-4.5-5-7-1.5z'/%3E%3Cpath d='M60 12l-5 8h10z'/%3E%3Ccircle cx='20' cy='52' r='4'/%3E%3Cpath d='M60 48c-3 0-5 2.5-5 5.5 0 2 1.5 3.5 3 4.5l-1.5 3h7l-1.5-3c1.5-1 3-2.5 3-4.5 0-3-2-5.5-5-5.5z'/%3E%3C/g%3E%3C/svg%3E");
+/* Arcade background: perspective grid floor */
+.arcade-bg {
+  background-color: #0a0618;
+  background-image:
+    linear-gradient(rgba(255, 61, 242, 0.08) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(41, 240, 255, 0.06) 2px, transparent 2px);
+  background-size: 32px 32px;
 }
 
-/* Classic Poker Table Felt Radial Gradient */
-.poker-felt {
-  background: radial-gradient(ellipse at center, #1b8a4b 0%, #15733d 60%, #0e5229 100%);
+/* CRT overlay: scanlines + vignette (toggle in settings) */
+.crt::before {
+  content: '';
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.22) 0 2px, transparent 2px 4px);
+}
+.crt::after {
+  content: '';
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.55) 100%);
 }
 
-.poker-bumper {
-  background: linear-gradient(145deg, #2a2d34 0%, #181a1f 100%);
-  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.1), 0 8px 30px rgba(0, 0, 0, 0.8);
+.scroll-x {
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: thin;
+  scrollbar-color: theme('colors.line') transparent;
+}
+.scroll-y {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: theme('colors.line') transparent;
 }
 
-.poker-wood-rim {
-  background: linear-gradient(145deg, #d8c29d 0%, #b89868 100%);
+.pixelated {
+  image-rendering: pixelated;
+  shape-rendering: crispEdges;
 }
 
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #11141a;
-}
-::-webkit-scrollbar-thumb {
-  background: #2a303c;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #3c4454;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.animate-fadeIn {
-  animation: fadeIn 0.15s ease-out forwards;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

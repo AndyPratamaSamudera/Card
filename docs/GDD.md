@@ -1,81 +1,56 @@
-# GAME DESIGN DOCUMENT (GDD)
-# COSMIC CHAOS: CARD ARENA
+# OVERLOAD 21 — Game Design
 
-## 1. Executive Summary
-- **Game Title:** Cosmic Chaos: Card Arena
-- **Platform:** Modern Web Browsers (Desktop & Mobile, WebGL, WebSocket)
-- **Engine/Stack:** React, Three.js / React Three Fiber, Fastify, Socket.IO, PostgreSQL, TypeScript
-- **Target Audience:** Casual party game lovers, sci-fi humor fans, competitive card players (Ages 10+)
-- **Session Duration:** 5 – 15 minutes per match
-- **Monetization / Distribution:** Free-to-play, zero installation, link-based instant play
+Sumber kebenaran aturan adalah kode di `packages/shared/src/engine/`. Dokumen ini merangkumnya.
 
----
+## Tujuan
+Jadi pemain terakhir yang masih hidup.
 
-## 2. Core Game Loop
-1. **Lobby & Match Start:**
-   - 2 to 8 players join via Room Code or direct URL.
-   - Host configures match settings (Default: 15s turn timer, base Overload limit 30-40, 3 penalty strikes).
-   - Seats assigned in circle around the Cosmic Holographic Table.
-2. **Round Setup:**
-   - Server initializes standard 54-card deck (40 Number cards, 14 Special cards).
-   - 5 cards dealt privately to each player.
-   - Central Core resets to 0. Overload Limit dynamically calibrated.
-   - Play direction begins Clockwise.
-3. **Turn Progression:**
-   - Active player selects 1 valid card from their hand.
-   - Number Card: Added directly to Current Core Total.
-   - Special Card: Triggers immediate tactical effect (Reversals, Freezes, Core Drains, Steals, Bombs).
-   - Turn advances to next player based on table direction and active status.
-4. **Overload Event (Neural Overload):**
-   - If a played card causes `Current Core Total > Overload Limit`:
-   - Offending player triggers **Neural Overload**.
-   - Character receives +1 Overload Level (accompanied by comical 3D deformation animations):
-     - Level 1: Swollen Head / Bulging eyes.
-     - Level 2: Violent cartoon vibration + spark particles.
-     - Level 3: Detonation & Ejection to orbit!
-5. **Round Reset & Elimination:**
-   - If player survives (< 3 penalties), new round begins.
-   - If player reaches 3 penalties, they are eliminated and convert to Spectator.
-   - Match ends when only 1 surviving player remains.
-   - Final results screen celebrates the winner with podium and match statistics.
+## Setup
+- 2–8 pemain (manusia dan/atau bot).
+- Deck 58 kartu dikocok; tiap pemain mendapat **5 kartu** (bisa diatur 3–7).
+- Total meja mulai dari **0**. Pemain pertama dipilih acak.
 
----
+## Giliran
+1. Pemain aktif memainkan **1 kartu**.
+2. Pemain itu langsung mengambil 1 kartu. Jika deck habis, tumpukan buangan dikocok ulang menjadi deck.
+3. Giliran pindah ke pemain hidup berikutnya sesuai arah putaran.
 
-## 3. Deck Composition & Card Balance
+Jika timer giliran aktif (default 15 detik) dan waktu habis, kartu dimainkan otomatis oleh AI.
 
-### A. Number Cards (40 Cards)
-- **+1** (5 cards): Essential endgame survivability tools.
-- **+2** (5 cards): Safe stepping stone.
-- **+3** (5 cards): Standard pacing.
-- **+4** (4 cards): Moderate push.
-- **+5** (4 cards): Baiting card.
-- **+6** (4 cards): Shifting into warning zone.
-- **+7** (4 cards): High pressure play.
-- **+8** (3 cards): Heavy bomb.
-- **+9** (3 cards): High-risk aggressive push.
-- **+10** (3 cards): Maximum acceleration bomb.
+## Overload
+- Jika total **lebih dari batas** (default 21) → **OVERLOAD**. Tepat sama dengan batas masih aman.
+- Pemain yang memainkan kartu itu roll 1–100: **≤ peluang selamat** (default 70) = selamat, selain itu **gugur**.
+- Total kembali ke 0 dan giliran pindah ke pemain berikutnya.
+- Pemain gugur menjadi penonton; kartunya masuk tumpukan buangan.
 
-### B. Special Cards (14 Unique Cards)
-1. **Warp Inversion (Reverse)**: Inverts play direction (CW <-> CCW).
-2. **Cryo-Stun (Freeze)**: Skips the next player in line.
-3. **Overclock Surge (Double Trouble)**: Multiplies the next number card's value by 2x.
-4. **Antimatter Flush (Zero-G Vent)**: Lowers Core Total by 5 points (floor = 0).
-5. **Pocket Wormhole (Quantum Steal)**: Steal 1 random card from a chosen opponent.
-6. **Plasma Shield (Cosmic Aegis)**: Shields against 1 targeted sabotage or prevents 1 overload strike.
-7. **Warp Swap (Chaos Matrix)**: Swap 2 random cards with a chosen opponent.
-8. **Hyper-Surge (Solar Flare)**: Adds +15 to Core Total instantly, grants an immediate extra turn.
-9. **Tachyon Mirror (Deflection Field)**: Redirects negative targeted effects to another opponent.
-10. **System Hard-Reset (Core Reboot)**: Resets Core Total to 0, permanently lowers Overload Limit by 5 for the round.
-11. **Dark Matter Infusion (Time Bomb)**: Places a 3-turn ticking bomb on a target; triggers penalty if Core does not overload before detonation.
-12. **Gravity Crush (Graviton Sabotage)**: Target opponent discards their highest number card and draws a replacement.
-13. **Harmonic Resonance (Equalizer)**: Snaps Core Total directly to 50% of the Overload Limit.
-14. **EMP Shockwave (Glitch Pulse)**: Scrambles visible card values of the next 2 players until played.
+## Deck (58 kartu)
 
----
+| Kartu | Jumlah | Efek |
+|---|---|---|
+| +1 … +8 | 5 tiap nilai | Tambah nilai ke total |
+| +9, +10 | 4 tiap nilai | Tambah nilai ke total |
+| DEATH | 1 | Semua pemain hidup roll nasib. Jika **semua** gagal, pemain yang memainkan DEATH diampuni |
+| ROLEBACK | 2 | Balik arah giliran. Pemain berikutnya tidak boleh membalas dengan ROLEBACK |
+| >1, >2, >3 | 1 tiap jenis | Pemain berikutnya wajib main kartu **angka** lebih dari nilai itu; kartu spesial dilarang |
+| SKIP | 1 | Lewati pemain berikutnya (dengan 2 pemain, giliran tetap pindah biasa) |
+| RESET | 1 | Total jadi 0 |
+| = BATAS | 1 | Total langsung sama dengan batas |
+| -5 | 1 | Total dikurangi 5 (minimal 0) |
 
-## 4. Characters & Visual Presentation
-Four distinct alien species represented in low-poly sci-fi aesthetic:
-1. **Zorblax the Glutton:** Green gelatinous one-eyed creature whose body jiggles comically.
-2. **Vex the Cyber-Mantis:** Sleek purple android alien with antenna twitching.
-3. **Blobbo the Puffer:** Orange spherical alien that expands drastically on overload.
-4. **Nebula the Cosmic Witch:** Blue floating entity with starry particle hair.
+## Aturan Terjebak
+Jika aturan (>N atau larangan ROLEBACK) membuat pemain **tidak punya kartu yang sah**, semua kartunya boleh dimainkan. Kartu yang dimainkan **hangus** (efeknya batal) dan pemain **wajib roll nasib** seperti overload. Aturan ini memastikan permainan tidak pernah macet.
+
+## Keluar & Koneksi (online)
+- Keluar di tengah match = gugur.
+- Terputus: setelah 5 detik bot mengambil alih kursi (tanda AUTO). Saat tersambung lagi, kendali kembali ke pemain.
+- Di lobby, pemain yang terputus lebih dari 20 detik dikeluarkan. Room tanpa pemain manusia yang tersambung ditutup setelah 2 menit.
+
+## Pengaturan Room
+| Opsi | Rentang | Default |
+|---|---|---|
+| Batas overload | 15–31 | 21 |
+| Peluang selamat | 50–90% | 70% |
+| Kartu awal | 3–7 | 5 |
+| Waktu giliran | off / 10 / 15 / 20 / 30 detik | 15 (hot-seat: off) |
+| Level bot | Mudah / Normal / Sulit | Normal |
+| Maks pemain (online) | 2–8 | 8 |
